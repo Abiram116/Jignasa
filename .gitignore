@@ -1,0 +1,97 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Secrets & local env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+profile_default/
+*.nbconvert.ipynb
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+settings.json
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- ML / model caches (downloaded weights) ---
+.cache/
+.huggingface/
+**/.cache/huggingface/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+
+# --- Large generated RAG artifacts ---
+*.npy
+*.index
+*.faiss
+*.sqlite3
+
+# RAG With LangChain — built by notebook (keep folder via .gitkeep)
+RAG With LangChain/rag_index/*
+!RAG With LangChain/rag_index/.gitkeep
+
+# RAG With LangChain — local PDFs (add your own; too large for GitHub)
+RAG With LangChain/knowledge-base/*.pdf
+
+# RAG With LangChain — evaluation run outputs (v1, v2, CSVs)
+RAG With LangChain/data/evaluations/
+
+# RAG With LangChain — legacy / ad-hoc output folders
+RAG With LangChain/Parsed-markdown/
+RAG With LangChain/Chunks/
+RAG With LangChain/Embeddings-data/
+RAG With LangChain/vectorstore/
+
+# RAG Without Frameworks — generated data
+RAG Without Frameworks/data/chunks/
+RAG Without Frameworks/data/embeddings/
+RAG Without Frameworks/Chunks/
+RAG Without Frameworks/Embeddings-data/
+RAG Without Frameworks/knowledge-base/*.pdf
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Streamlit ---
+.streamlit/secrets.toml
