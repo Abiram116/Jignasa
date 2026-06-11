@@ -38,8 +38,8 @@ class MetricsSummary:
     ndcg_at_k: float
     evaluated_at: str
 
-    def as_dict(self) -> dict:
-        return {
+    def as_dict(self, *, elapsed_seconds: float | None = None) -> dict:
+        out = {
             "question_count": self.question_count,
             "k": self.k,
             "hit_at_k": self.hit_at_k,
@@ -48,7 +48,15 @@ class MetricsSummary:
             "mrr_at_k": self.mrr_at_k,
             "ndcg_at_k": self.ndcg_at_k,
             "evaluated_at": self.evaluated_at,
+            "eval_type": "retrieval_only",
+            "uses_llm": False,
+            "eval_description": (
+                "Retrieval only: embed question + FAISS search + check expected PDF. No LLM."
+            ),
         }
+        if elapsed_seconds is not None:
+            out["elapsed_seconds"] = round(elapsed_seconds, 2)
+        return out
 
 
 def load_index() -> tuple[faiss.IndexFlatIP, list[dict]]:

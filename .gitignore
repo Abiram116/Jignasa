@@ -95,3 +95,14 @@ logs/
 
 # --- Streamlit ---
 .streamlit/secrets.toml
+
+# --- React web app ---
+RAG With LangChain/web/node_modules/
+RAG With LangChain/web/dist/
+RAG With LangChain/web/.eslintcache
+RAG With LangChain/web/*.log
+RAG With LangChain/web/npm-debug.log*
+RAG With LangChain/web/yarn-debug.log*
+RAG With LangChain/web/yarn-error.log*
+RAG With LangChain/web/pnpm-debug.log*
+
