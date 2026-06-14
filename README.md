@@ -9,6 +9,9 @@
 1. [Overview](#overview)
 2. [Architecture](#architecture)
 3. [Upgraded Features](#upgraded-features)
+   - [Modern ChatGPT-Style UI](#modern-chatgpt-style-ui)
+   - [Smart Quote & Code Blocks](#smart-quote--code-blocks)
+   - [Message Editing & Truncation](#message-editing--truncation)
    - [Segmented Mode Selector](#segmented-mode-selector)
    - [Prompt Cache](#prompt-cache)
    - [Token Tracking & Cost Calculator](#token-tracking--cost-calculator)
@@ -90,6 +93,18 @@ Jignasa is a **Retrieval-Augmented Generation (RAG)** application built with:
 ---
 
 ## Upgraded Features
+
+### Modern ChatGPT-Style UI
+* **Spacious Layout**: A clean, highly readable chat interface designed to mimic modern AI aesthetics (e.g. ChatGPT).
+* **Right-Aligned User Prompts**: User messages are cleanly tucked to the right inside minimalist, theme-less pill bubbles.
+* **Left-Aligned Markdown Responses**: Assistant answers are flush left with optimized line height, large readable typography, and removed box-shadow borders for a clean reading experience.
+
+### Smart Quote & Code Blocks
+* **Contextual Quoting**: Highlight any text in the chat to seamlessly "Quote" it. The quote is pinned to a floating preview card above your input box and automatically formats into the background context so the LLM understands exactly what part of an answer you're referencing.
+* **Enhanced Code Blocks**: Syntax-highlighted code blocks are wrapped in dark, rounded containers featuring a dedicated top header, language label, `< >` icon, and a 1-click **Copy** button.
+
+### Message Editing & Truncation
+* **Edit History**: Click the pencil icon on any previous user message to easily edit and resend your prompt. This automatically deletes the old message and truncates the conversation from that point onward, keeping the LLM's memory perfectly aligned with the newly edited timeline.
 
 ### Segmented Mode Selector
 Users can bypass automatic intent classification using the Segmented Mode Selector control above the chat input box:
