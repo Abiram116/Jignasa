@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Routes, Route, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -13,8 +14,10 @@ import {
   saveEvaluation,
   streamChat,
   streamEvaluation,
+  truncateConversation,
 } from './api'
 import type { ChatMode, Conversation, EvalProgress, EvalSummary, Message, SavedEval, Source, Status, WebSource } from './types'
+import HomePage from './HomePage'
 import './index.css'
 
 type Tab = 'chat' | 'evaluation'
@@ -89,6 +92,17 @@ const Ic = {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
       <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  Pencil: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+    </svg>
+  ),
+  Code: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 18 22 12 16 6"></polyline>
+      <polyline points="8 6 2 12 8 18"></polyline>
     </svg>
   ),
 }
@@ -236,21 +250,29 @@ function MarkdownContent({ content }: { content: string }) {
           const codeStr = String(children).replace(/\n$/, '')
           const isBlock = codeStr.includes('\n') || match
           if (isBlock) {
+            const lang = match?.[1] || 'text'
             return (
-              <SyntaxHighlighter
-                style={oneDark}
-                language={match?.[1] ?? 'text'}
-                PreTag="div"
-                customStyle={{
-                  borderRadius: '8px',
-                  fontSize: '0.8rem',
-                  margin: '0.6rem 0',
-                  background: '#0d1117',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                }}
-              >
-                {codeStr}
-              </SyntaxHighlighter>
+              <div className="code-block-wrapper">
+                <div className="code-block-header">
+                  <span className="code-lang"><Ic.Code /> {lang}</span>
+                  <CopyButton text={codeStr} />
+                </div>
+                <SyntaxHighlighter
+                  style={oneDark}
+                  language={lang}
+                  PreTag="div"
+                  customStyle={{
+                    margin: 0,
+                    borderRadius: '0 0 12px 12px',
+                    fontSize: '0.85rem',
+                    background: '#0d1117',
+                    border: 'none',
+                    padding: '1rem',
+                  }}
+                >
+                  {codeStr}
+                </SyntaxHighlighter>
+              </div>
             )
           }
           return <code className="md-inline-code" {...props}>{children}</code>
@@ -285,11 +307,12 @@ function MarkdownContent({ content }: { content: string }) {
 
 /* ── Message bubble ────────────────────────────────────────────────── */
 function MessageBubble({
-  msg, isLast, isStreaming,
+  msg, isLast, isStreaming, onEdit
 }: {
   msg: Message
   isLast: boolean
   isStreaming: boolean
+  onEdit?: (msg: Message) => void
 }) {
   const isTyping = isLast && isStreaming && !msg.message && msg.role === 'assistant'
 
@@ -304,7 +327,10 @@ function MessageBubble({
         )}
         <div className={`bubble ${msg.role}`}>
           {isTyping ? (
-            <div className="typing-dots"><span /><span /><span /></div>
+            <div className="agent-thinking">
+              <div className="thinking-dots"><span /><span /><span /></div>
+              <span>Thinking…</span>
+            </div>
           ) : msg.role === 'assistant' ? (
             <MarkdownContent content={msg.message} />
           ) : (
@@ -321,21 +347,15 @@ function MessageBubble({
         {msg.role === 'assistant' && msg.message && msg.prompt_tokens !== undefined && msg.prompt_tokens > 0 && !isStreaming && (
           <div className="token-stats-box">
             <div className="token-stats-row">
-              <span className="token-stat-item">
-                <strong>Input:</strong> {msg.prompt_tokens} t
-              </span>
-              <span className="token-stat-separator">•</span>
-              <span className="token-stat-item">
-                <strong>Output:</strong> {msg.completion_tokens} t
-              </span>
-              <span className="token-stat-separator">•</span>
-              <span className="token-stat-item">
-                <strong>Total:</strong> {(msg.prompt_tokens || 0) + (msg.completion_tokens || 0)} t
-              </span>
+              <strong>Input:</strong> {msg.prompt_tokens} t
+              <span className="token-sep">·</span>
+              <strong>Output:</strong> {msg.completion_tokens} t
+              <span className="token-sep">·</span>
+              <strong>Total:</strong> {(msg.prompt_tokens || 0) + (msg.completion_tokens || 0)} t
               {msg.cached && (
                 <>
-                  <span className="token-stat-separator">•</span>
-                  <span className="cached-stats-badge">Cached</span>
+                  <span className="token-sep">·</span>
+                  <span className="cached-badge">Cached</span>
                 </>
               )}
             </div>
@@ -352,11 +372,17 @@ function MessageBubble({
             <CopyButton text={msg.message} />
           </div>
         )}
+        {msg.role === 'user' && !isStreaming && onEdit && (
+          <div className="bubble-actions">
+            <button className="bubble-action-btn edit-btn" onClick={() => onEdit(msg)} title="Edit prompt">
+              <Ic.Pencil /> Edit
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
-
 /* ── Cost Calculator Modal ─────────────────────────────────────────── */
 function CostCalculatorModal({
   messages, onClose,
@@ -378,28 +404,28 @@ function CostCalculatorModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Conversation Cost Calculator</h3>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="stats-summary-grid">
-            <div className="summary-card">
-              <span className="summary-label">Input Tokens</span>
-              <span className="summary-val">{totalPrompt.toLocaleString()}</span>
+          <div className="cost-stats-grid">
+            <div className="stat-card">
+              <span className="stat-card-label">Input Tokens</span>
+              <span className="stat-card-value">{totalPrompt.toLocaleString()}</span>
             </div>
-            <div className="summary-card">
-              <span className="summary-label">Output Tokens</span>
-              <span className="summary-val">{totalCompletion.toLocaleString()}</span>
+            <div className="stat-card">
+              <span className="stat-card-label">Output Tokens</span>
+              <span className="stat-card-value">{totalCompletion.toLocaleString()}</span>
             </div>
-            <div className="summary-card">
-              <span className="summary-label">Total Tokens</span>
-              <span className="summary-val">{totalTokens.toLocaleString()}</span>
+            <div className="stat-card">
+              <span className="stat-card-label">Total Tokens</span>
+              <span className="stat-card-value">{totalTokens.toLocaleString()}</span>
             </div>
           </div>
           
-          <div className="cost-table-container">
+          <div className="cost-table-wrap">
             <table className="cost-table">
               <thead>
                 <tr>
@@ -415,9 +441,9 @@ function CostCalculatorModal({
                   return (
                     <tr key={m.name}>
                       <td style={{ fontWeight: 'bold' }}>{m.name}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>${m.inRate.toFixed(3)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>${m.outRate.toFixed(3)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--cyan)' }}>
+                      <td style={{ textAlign: 'right', color: 'var(--text-3)' }}>${m.inRate.toFixed(3)}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-3)' }}>${m.outRate.toFixed(3)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--ember-400)' }}>
                         ${cost < 0.00001 && cost > 0 ? cost.toFixed(7) : cost.toFixed(5)}
                       </td>
                     </tr>
@@ -426,7 +452,7 @@ function CostCalculatorModal({
               </tbody>
             </table>
           </div>
-          <p className="calculator-note">
+          <p className="cost-note">
             * Rates are based on official pricing APIs as of 2024/2025. Compare this local model's token volume against typical production workloads to estimate cost before deploying to staging/prod.
           </p>
         </div>
@@ -439,6 +465,7 @@ function CostCalculatorModal({
    Main App
 ═══════════════════════════════════════════════════════════════════════ */
 function App() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('chat')
   const [status, setStatus] = useState<Status | null>(null)
   const [loadingApp, setLoadingApp] = useState(true)
@@ -453,6 +480,8 @@ function App() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
+  const [quoteSelection, setQuoteSelection] = useState<{text: string, top: number, left: number} | null>(null)
+  const [quotedText, setQuotedText] = useState<string | null>(null)
 
   const [evalK, setEvalK] = useState(5)
   const [evalRunning, setEvalRunning] = useState(false)
@@ -556,15 +585,75 @@ function App() {
     }
   }
 
+  const handleEditMessage = async (msg: Message) => {
+    if (!sessionId || !msg.id || streaming) return
+    if (!confirm('This will delete this message and all subsequent messages. Continue?')) return
+    
+    setInput(msg.message)
+    try {
+      await truncateConversation(sessionId, msg.id)
+      setMessages(messages.slice(0, messages.findIndex(m => m.id === msg.id)))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleTextSelection = (e: React.MouseEvent) => {
+    if ((e.target as Element).closest('.floating-quote-btn')) {
+      return // Ignore mouseups on the quote button itself
+    }
+    
+    const container = e.currentTarget as HTMLElement
+    
+    // Slight delay to ensure browser selection has settled
+    setTimeout(() => {
+      const selection = window.getSelection()
+      if (!selection || selection.isCollapsed) {
+        setQuoteSelection(null)
+        return
+      }
+      const text = selection.toString().trim()
+      if (!text) {
+        setQuoteSelection(null)
+        return
+      }
+      const range = selection.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      
+      // Calculate position absolute relative to the .messages container
+      setQuoteSelection({
+        text,
+        top: rect.top - containerRect.top + container.scrollTop - 40,
+        left: rect.left - containerRect.left + container.scrollLeft + rect.width / 2
+      })
+    }, 10)
+  }
+
+  const applyQuote = () => {
+    if (!quoteSelection) return
+    setQuotedText(quoteSelection.text)
+    setQuoteSelection(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
   const handleSend = async () => {
     if (!input.trim() || streaming) return
-    const text = input.trim()
+    
+    // Construct final text with quote if present
+    let finalPayload = input.trim()
+    if (quotedText) {
+      const formattedQuote = quotedText.split('\n').map(line => `> ${line}`).join('\n')
+      finalPayload = `${formattedQuote}\n\n${finalPayload}`
+    }
+    
     setInput('')
+    setQuotedText(null)
     setError('')
     setStreaming(true)
 
     // Optimistically add user message
-    setMessages((m) => [...m, { role: 'user', message: text }])
+    setMessages((m) => [...m, { role: 'user', message: finalPayload }])
     // Placeholder assistant bubble
     setMessages((m) => [...m, { role: 'assistant', message: '' }])
 
@@ -577,7 +666,7 @@ function App() {
     let assistant = ''
 
     try {
-      await streamChat(sessionId!, text, selectedMode, (event) => {
+      await streamChat(sessionId!, finalPayload, selectedMode, (event) => {
         if (event.type === 'intent') {
           pendingMode = event.mode
           // Update placeholder bubble mode immediately
@@ -694,11 +783,21 @@ function App() {
 
   /* ── Status badge ── */
   const renderStatus = () => {
-    if (loadingApp) return <div className="status-badge warn"><div className="status-dot" /><span>Connecting…</span></div>
-    if (!status && connectError) return <div className="status-badge err"><div className="status-dot" /><span>Offline</span></div>
+    if (loadingApp) return (
+      <div className="status-pill warn">
+        <div className="status-dot" />
+        <span>Connecting…</span>
+      </div>
+    )
+    if (!status && connectError) return (
+      <div className="status-pill err">
+        <div className="status-dot" />
+        <span>Offline</span>
+      </div>
+    )
     if (!status) return null
     return (
-      <div className={`status-badge ${status.ready ? 'ok' : 'warn'}`}>
+      <div className={`status-pill ${status.ready ? 'ok' : 'warn'}`}>
         <div className="status-dot" />
         <span>{status.ready ? `${status.chunk_count.toLocaleString()} chunks` : 'Index missing'}</span>
         <span className="status-detail">{status.llm_model}</span>
@@ -706,31 +805,57 @@ function App() {
     )
   }
 
+  const isFirstLoad = useRef(true)
+
   /* ── Render ── */
   return (
-    <div className="app">
-      {/* ════ Sidebar ════ */}
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="brand">
-            <div className="brand-icon">🔍</div>
-            <div>
+    <Routes>
+      <Route path="/" element={
+        <HomePage 
+          isFirstLoad={isFirstLoad.current}
+          onEnter={() => {
+            isFirstLoad.current = false
+            navigate('/chat')
+          }} 
+        />
+      } />
+      <Route path="/chat" element={
+        <div className="app">
+          {/* ════ Sidebar ════ */}
+          <aside className="sidebar">
+            <div className="sidebar-header">
+              {/* Brand */}
+              <div className="brand" onClick={() => navigate('/')} title="Back to home">
+            <div className="brand-mark">
+              <span className="brand-mark-glyph">✦</span>
+            </div>
+            <div className="brand-text">
               <h1>Jignasa</h1>
-              <div className="brand-sub">PDF RAG Assistant</div>
+              <p>PDF RAG Assistant</p>
             </div>
           </div>
+
+          {/* Status pill */}
           {renderStatus()}
+
           <button id="btn-new-chat" className="btn-new-chat" onClick={handleNewChat}>
             <Ic.Plus /> New conversation
           </button>
           <button
+            className="btn-home"
+            onClick={() => navigate('/')}
+            title="Return to home page"
+          >
+            ← Home
+          </button>
+          <button
             id="btn-cost-calculator"
-            className="btn-cost-calculator"
+            className="btn-cost-calc"
             onClick={() => setShowCostModal(true)}
             disabled={messages.length === 0}
             title="Check total tokens and cost for this conversation"
           >
-            🪙 Check Token Cost
+            🪙 Token cost
           </button>
         </div>
 
@@ -747,20 +872,22 @@ function App() {
               >
                 {c.title || 'New Chat'}
               </button>
-              <button
-                className="conv-rename-btn"
-                onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
-                title="Rename"
-              >
-                <Ic.Rename />
-              </button>
-              <button
-                className="conv-delete-btn"
-                onClick={() => handleDelete(c.session_id)}
-                title="Delete"
-              >
-                <Ic.Trash />
-              </button>
+              <div className="conv-actions">
+                <button
+                  className="conv-action-btn"
+                  onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
+                  title="Rename"
+                >
+                  <Ic.Rename />
+                </button>
+                <button
+                  className="conv-action-btn danger"
+                  onClick={() => handleDelete(c.session_id)}
+                  title="Delete"
+                >
+                  <Ic.Trash />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -817,7 +944,7 @@ function App() {
 
             {/* Chat header */}
             <div className="chat-header">
-              <div className="chat-header-left">
+              <div className="chat-title-group">
                 <span className="chat-title">{title}</span>
                 <button
                   className="chat-rename-btn"
@@ -828,7 +955,7 @@ function App() {
                 </button>
               </div>
               {status && (
-                <span className="chat-subtitle">
+                <span className="chat-meta">
                   {status.chunk_count.toLocaleString()} chunks · {status.llm_model}
                 </span>
               )}
@@ -837,59 +964,74 @@ function App() {
             {/* Messages */}
             {messages.length === 0 && !streaming ? (
               <div className="empty-state">
-                <div className="empty-icon-ring">
-                  <div className="empty-state-icon">📄</div>
+                <div className="empty-agent-ring">
+                  <div className="empty-agent-icon">✦</div>
                 </div>
                 <h2>Ask about your documents</h2>
                 <p>
                   Automatically routes to <strong>PDF RAG</strong>, <strong>web search</strong>, or casual chat.
                   Query transformation improves retrieval quality.
                 </p>
-                <div className="empty-chips">
+                <div className="prompt-chips">
                   {[
-                    '👋 Hello!',
-                    '📄 Summarise the key findings',
-                    '🌐 What happened in AI today?',
-                    '🔍 What does the document say about…',
+                    { icon: '👋', text: 'Hello!' },
+                    { icon: '📄', text: 'Summarise the key findings' },
+                    { icon: '🌐', text: 'What happened in AI today?' },
+                    { icon: '🔍', text: 'What does the document say about…' },
                   ].map((chip) => (
                     <button
-                      key={chip}
-                      className="chip-btn"
-                      onClick={() => setInput(chip.slice(3))}
+                      key={chip.text}
+                      className="prompt-chip"
+                      onClick={() => setInput(chip.text)}
                     >
-                      {chip}
+                      <span className="chip-icon">{chip.icon}</span>
+                      {chip.text}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="messages">
+              <div className="messages" onMouseUp={handleTextSelection}>
                 {messages.map((m, i) => (
                   <MessageBubble
                     key={i}
                     msg={m}
                     isLast={i === messages.length - 1}
                     isStreaming={streaming}
+                    onEdit={handleEditMessage}
                   />
                 ))}
                 <div ref={messagesEndRef} />
+                
+                {/* Floating Quote Button */}
+                {quoteSelection && (
+                  <button
+                    className="floating-quote-btn"
+                    style={{ top: quoteSelection.top, left: quoteSelection.left }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={applyQuote}
+                    title="Quote selected text"
+                  >
+                    <Ic.Chat /> Quote
+                  </button>
+                )}
               </div>
             )}
 
             {/* Input */}
             <div className="chat-input-area">
               <div className="chat-input-wrap">
-                {/* Segmented Mode Selector */}
-                <div className="mode-selector-segmented">
+                {/* Mode Selector */}
+                <div className="mode-selector">
                   {([
-                    ['auto', 'Auto-Detect'],
-                    ['docs', 'PDF RAG'],
-                    ['web', 'Web Search'],
+                    ['auto',   'Auto'],
+                    ['docs',   'Knowledge'],
+                    ['web',    'Web'],
                     ['hybrid', 'Hybrid'],
                   ] as [ChatMode, string][]).map(([m, label]) => (
                     <button
                       key={m}
-                      className={`mode-segment-btn ${selectedMode === m ? 'active' : ''}`}
+                      className={`mode-btn mode-btn-${m} ${selectedMode === m ? 'active' : ''}`}
                       onClick={() => setSelectedMode(m)}
                       disabled={streaming}
                     >
@@ -897,7 +1039,19 @@ function App() {
                     </button>
                   ))}
                 </div>
-                <div className={`chat-input-box ${streaming ? 'disabled' : ''}`}>
+                
+                {/* Quoted Text Preview Box */}
+                {quotedText && (
+                  <div className="quoted-text-preview">
+                    <div className="quoted-text-header">
+                      <Ic.Chat /> Replying to quote
+                      <button className="quote-clear-btn" onClick={() => setQuotedText(null)} title="Remove quote">✕</button>
+                    </div>
+                    <div className="quoted-text-content">{quotedText}</div>
+                  </div>
+                )}
+                
+                <div className={`input-box ${streaming ? 'disabled' : ''}`}>
                   <AutoTextarea
                     value={input}
                     onChange={setInput}
@@ -910,7 +1064,7 @@ function App() {
                   />
                   <button
                     id="btn-send"
-                    className="chat-send-btn"
+                    className="send-btn"
                     onClick={handleSend}
                     disabled={streaming || !input.trim()}
                     title="Send (Enter)"
@@ -922,7 +1076,7 @@ function App() {
                   </button>
                 </div>
                 <div className="input-footer">
-                  <span className="chat-hint">Enter to send · Shift+Enter for newline</span>
+                  <span className="input-hint">Enter to send · Shift+Enter for newline</span>
                   <span className={`char-count ${input.length > MAX_CHARS * 0.85 ? 'warn' : ''}`}>
                     {input.length}/{MAX_CHARS}
                   </span>
@@ -1060,6 +1214,8 @@ function App() {
         />
       )}
     </div>
+      } />
+    </Routes>
   )
 }
 

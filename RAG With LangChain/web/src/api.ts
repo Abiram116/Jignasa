@@ -22,6 +22,11 @@ export async function deleteConversation(id: string): Promise<void> {
   await fetch(`${API}/conversations/${id}`, { method: 'DELETE' })
 }
 
+export async function truncateConversation(sessionId: string, messageId: number): Promise<void> {
+  const res = await fetch(`${API}/conversations/${sessionId}/truncate/${messageId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
 export async function renameConversation(id: string, title: string): Promise<void> {
   const res = await fetch(`${API}/conversations/${id}`, {
     method: 'PUT',

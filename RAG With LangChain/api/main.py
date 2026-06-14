@@ -91,6 +91,12 @@ def remove_conversation(session_id: str) -> dict:
     return {"ok": True}
 
 
+@app.delete("/api/conversations/{session_id}/truncate/{message_id}")
+def truncate_conversation(session_id: str, message_id: int) -> dict:
+    db.truncate_messages(session_id, message_id)
+    return {"ok": True}
+
+
 @app.get("/api/conversations/{session_id}/messages")
 def get_messages(session_id: str) -> dict:
     return {

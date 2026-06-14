@@ -106,3 +106,8 @@ RAG With LangChain/web/yarn-debug.log*
 RAG With LangChain/web/yarn-error.log*
 RAG With LangChain/web/pnpm-debug.log*
 
+# --- Windows / WSL artifacts ---
+*:Zone.Identifier
+
+# --- Temporary Test Folders ---
+test UI/

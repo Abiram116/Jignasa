@@ -72,11 +72,16 @@ def delete_conversation(session_id: str) -> None:
         conn.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
 
 
+def truncate_messages(session_id: str, message_id: int) -> None:
+    with db_conn() as conn:
+        conn.execute("DELETE FROM chats WHERE session_id = ? AND id >= ?", (session_id, message_id))
+
+
 def load_messages(session_id: str) -> list[dict]:
     import json
     with db_conn() as conn:
         rows = conn.execute(
-            """SELECT role, message, created_at, prompt_tokens, completion_tokens, mode,
+            """SELECT id, role, message, created_at, prompt_tokens, completion_tokens, mode,
                       sources_json, web_sources_json, cached
                FROM chats WHERE session_id = ? ORDER BY id""",
             (session_id,),

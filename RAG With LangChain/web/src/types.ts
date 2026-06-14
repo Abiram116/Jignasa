@@ -17,14 +17,15 @@ export interface Conversation {
 }
 
 export interface Message {
+  id?: number
   role: 'user' | 'assistant'
   message: string
   created_at?: string
+  prompt_tokens?: number
+  completion_tokens?: number
   mode?: ChatMode
   sources?: Source[]
   webSources?: WebSource[]
-  prompt_tokens?: number
-  completion_tokens?: number
   cached?: boolean
 }
 
