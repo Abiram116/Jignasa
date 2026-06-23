@@ -27,6 +27,7 @@ export interface Message {
   sources?: Source[]
   webSources?: WebSource[]
   cached?: boolean
+  latency_ms?: number
 }
 
 export interface Source {

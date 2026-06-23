@@ -39,6 +39,7 @@ def init_db() -> None:
             ("sources_json", "TEXT"),
             ("web_sources_json", "TEXT"),
             ("cached", "INTEGER DEFAULT 0"),
+            ("latency_ms", "INTEGER DEFAULT 0"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE chats ADD COLUMN {col} {col_type}")
@@ -82,7 +83,7 @@ def load_messages(session_id: str) -> list[dict]:
     with db_conn() as conn:
         rows = conn.execute(
             """SELECT id, role, message, created_at, prompt_tokens, completion_tokens, mode,
-                      sources_json, web_sources_json, cached
+                      sources_json, web_sources_json, cached, latency_ms
                FROM chats WHERE session_id = ? ORDER BY id""",
             (session_id,),
         ).fetchall()
@@ -93,6 +94,7 @@ def load_messages(session_id: str) -> list[dict]:
         d["prompt_tokens"] = d.get("prompt_tokens") or 0
         d["completion_tokens"] = d.get("completion_tokens") or 0
         d["cached"] = bool(d.get("cached"))
+        d["latency_ms"] = d.get("latency_ms") or 0
         
         # Load document sources
         if d.get("sources_json"):
@@ -128,6 +130,7 @@ def append_message(
     sources: list | None = None,
     web_sources: list | None = None,
     cached: bool = False,
+    latency_ms: int = 0,
 ) -> None:
     import json
     with db_conn() as conn:
@@ -135,8 +138,8 @@ def append_message(
             """INSERT INTO chats (
                 session_id, role, message, created_at,
                 prompt_tokens, completion_tokens, mode,
-                sources_json, web_sources_json, cached
-               ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                sources_json, web_sources_json, cached, latency_ms
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 role,
@@ -148,6 +151,7 @@ def append_message(
                 json.dumps(sources) if sources else None,
                 json.dumps(web_sources) if web_sources else None,
                 1 if cached else 0,
+                latency_ms,
             ),
         )
 

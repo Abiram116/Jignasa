@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 
 from fastapi import FastAPI, HTTPException
@@ -20,23 +21,40 @@ from api.evaluation import (
     save_named_snapshot,
     stream_evaluation,
 )
-from api.intent import classify_intent, run_guardrails
+from api.intent import classify_intent, classify_intent_llm, run_guardrails
 from api.rag import build_prompt, search_with_transform
+from api.security import (
+    SecurityHeadersMiddleware,
+    check_prompt_injection,
+    sanitise_text,
+    validate_session_id,
+)
 from api.websearch import build_web_prompt, web_search
 
+# ── Allowed origins: extend this list when deploying to production ────────
+_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # "https://your-prod-domain.com",  # ← add prod origin here
+]
+
 app = FastAPI(title="Jijnasa PDF RAG API")
+
+# Security headers must be registered BEFORE CORS so they apply everywhere
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],   # explicit — not wildcard
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     mode: str = Field(default="auto")
+    quoted_text: str | None = Field(default=None, max_length=1000)
 
 
 class EvalRequest(BaseModel):
@@ -48,6 +66,14 @@ class SaveEvalRequest(BaseModel):
     k: int = Field(default=TOP_K, ge=1, le=10)
     summary: dict | None = None
     rows: list[dict] | None = None
+
+
+class PartialAssistantRequest(BaseModel):
+    message: str = Field(min_length=1)
+    mode: str = Field(default="casual")
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    latency_ms: int = Field(default=0, ge=0)
 
 
 @app.on_event("startup")
@@ -81,24 +107,30 @@ class RenameRequest(BaseModel):
 
 @app.put("/api/conversations/{session_id}")
 def put_conversation(session_id: str, body: RenameRequest) -> dict:
-    db.set_title(session_id, body.title)
+    validate_session_id(session_id)
+    db.set_title(session_id, sanitise_text(body.title, max_length=60))
     return {"ok": True}
 
 
 @app.delete("/api/conversations/{session_id}")
 def remove_conversation(session_id: str) -> dict:
+    validate_session_id(session_id)
     db.delete_conversation(session_id)
     return {"ok": True}
 
 
 @app.delete("/api/conversations/{session_id}/truncate/{message_id}")
 def truncate_conversation(session_id: str, message_id: int) -> dict:
+    validate_session_id(session_id)
+    if message_id < 1:
+        raise HTTPException(400, "Invalid message ID.")
     db.truncate_messages(session_id, message_id)
     return {"ok": True}
 
 
 @app.get("/api/conversations/{session_id}/messages")
 def get_messages(session_id: str) -> dict:
+    validate_session_id(session_id)
     return {
         "session_id": session_id,
         "title": db.get_title(session_id),
@@ -106,11 +138,47 @@ def get_messages(session_id: str) -> dict:
     }
 
 
+@app.post("/api/conversations/{session_id}/partial-assistant")
+def save_partial_assistant(session_id: str, body: PartialAssistantRequest) -> dict:
+    """
+    Save a partial (stopped mid-stream) assistant response to the DB.
+    Called by the frontend when the user stops a long response that has
+    enough content to be worth keeping (≥ 4 newlines).
+    """
+    validate_session_id(session_id)
+    msg = sanitise_text(body.message, max_length=20000)
+    db.append_message(
+        session_id,
+        "assistant",
+        msg,
+        prompt_tokens=body.prompt_tokens,
+        completion_tokens=body.completion_tokens,
+        mode=body.mode,
+        cached=False,
+        latency_ms=body.latency_ms,
+    )
+    return {"ok": True}
+
+
 @app.post("/api/conversations/{session_id}/chat")
 def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
-    # ── Guardrails ──────────────────────────────────────────────────
+    # ── Validate session ID format ───────────────────────────────────
+    validate_session_id(session_id)
+
+    # ── Sanitise inputs ─────────────────────────────────────────────
+    body.message = sanitise_text(body.message, max_length=2000)
+    if body.quoted_text:
+        body.quoted_text = sanitise_text(body.quoted_text, max_length=1000)
+
+    # ── Guardrails (length + blocked patterns) ───────────────────────
     try:
         run_guardrails(body.message)
+        if body.quoted_text:
+            run_guardrails(body.quoted_text)
+        # Structural prompt-injection check
+        check_prompt_injection(body.message)
+        if body.quoted_text:
+            check_prompt_injection(body.quoted_text)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -121,7 +189,8 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
     intent = mode_requested
     if mode_requested == "auto":
-        intent = classify_intent(body.message)
+        # Use Ollama tool-calling for smarter routing; falls back to heuristic
+        intent = classify_intent_llm(body.message)
         if intent == "casual":
             resolved_mode = "casual"
         elif intent == "web":
@@ -133,7 +202,14 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         if resolved_mode == "docs":
             intent = "rag"
         elif resolved_mode == "web":
-            intent = "web"
+            # Even in explicit web mode, detect casual messages (hi, hello, etc.)
+            # to avoid pointlessly searching the web for greetings.
+            heuristic = classify_intent(body.message)
+            if heuristic == "casual":
+                resolved_mode = "casual"
+                intent = "casual"
+            else:
+                intent = "web"
         elif resolved_mode == "hybrid":
             intent = "hybrid"
 
@@ -146,6 +222,24 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             resolved_mode = "web"
             intent = "web"
 
+    # ── Build quote context block ────────────────────────────────────
+    def _quote_block(quoted: str | None) -> str:
+        """
+        Return a structured instruction block when the user has quoted part of
+        a previous assistant response.  The LLM receives this before the main
+        question so it knows exactly which excerpt the user is referring to.
+        """
+        if not quoted or not quoted.strip():
+            return ""
+        return (
+            "\n\n[USER CONTEXT: The user has highlighted and quoted the following specific "
+            "excerpt from a previous assistant message. Their question below refers to "
+            "this excerpt specifically — address it directly and precisely.]\n"
+            f"Quoted excerpt:\n\"\"\"\n{quoted.strip()}\n\"\"\"\n"
+        )
+
+    quote_ctx = _quote_block(body.quoted_text)
+
     # ── Snapshot history BEFORE writing the new user message ──────
     prior_history = db.load_messages(session_id)
 
@@ -154,10 +248,19 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         words = body.message.strip().split()[:6]
         db.set_title(session_id, " ".join(words).title() if words else "New Chat")
 
-    db.append_message(session_id, "user", body.message)
+    # Store the display form so the conversation renders correctly when reloaded.
+    # If the user quoted text, prepend it as a blockquote so it's visible in history.
+    display_message = (
+        f"> {body.quoted_text.strip()}\n\n{body.message}"
+        if body.quoted_text and body.quoted_text.strip()
+        else body.message
+    )
+    db.append_message(session_id, "user", display_message)
 
     # ── Build event stream ──────────────────────────────────────────
     def event_stream() -> Iterator[str]:
+        stream_start = time.monotonic()
+
         # Always tell the frontend which mode we're in
         yield _sse({"type": "intent", "mode": intent})
 
@@ -165,20 +268,20 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         if resolved_mode != "casual":
             cached = get_cached(body.message, resolved_mode)
             if cached is not None:
+                latency_ms = int((time.monotonic() - stream_start) * 1000)
                 yield _sse({"type": "cached", "is_cached": True})
                 if cached.get("sources"):
                     yield _sse({"type": "sources", "sources": cached["sources"]})
                 if cached.get("web_sources"):
                     yield _sse({"type": "web_sources", "sources": cached["web_sources"]})
-                
+
                 # Stream cached content chunk by chunk with delay
-                import time
                 res_text = cached["response"]
                 chunk_sz = 15
                 for idx in range(0, len(res_text), chunk_sz):
                     yield _sse({"type": "token", "content": res_text[idx:idx+chunk_sz]})
                     time.sleep(0.005)
-                
+
                 db.append_message(
                     session_id,
                     "assistant",
@@ -189,13 +292,15 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                     sources=cached["sources"],
                     web_sources=cached["web_sources"],
                     cached=True,
+                    latency_ms=latency_ms,
                 )
                 yield _sse({
                     "type": "done",
                     "content": res_text,
                     "prompt_tokens": cached["prompt_tokens"],
                     "completion_tokens": cached["completion_tokens"],
-                    "cached": True
+                    "cached": True,
+                    "latency_ms": latency_ms,
                 })
                 return
 
@@ -211,7 +316,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             ollama_messages: list[dict] = [{"role": "system", "content": casual_system}]
             for m in prior_history[-8:]:   # last 4 turns
                 ollama_messages.append({"role": m["role"], "content": m["message"]})
-            ollama_messages.append({"role": "user", "content": body.message})
+            ollama_messages.append({"role": "user", "content": f"{quote_ctx}{body.message}".strip()})
 
             answer_parts: list[str] = []
             prompt_tokens = 0
@@ -235,17 +340,19 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 return
 
             answer = "".join(answer_parts).strip()
+            latency_ms = int((time.monotonic() - stream_start) * 1000)
             db.append_message(
                 session_id, "assistant", answer,
                 prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="casual", cached=False
+                mode="casual", cached=False, latency_ms=latency_ms,
             )
             yield _sse({
                 "type": "done",
                 "content": answer,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                "cached": False
+                "cached": False,
+                "latency_ms": latency_ms,
             })
 
         # ── WEB: DuckDuckGo search → Qwen ─────────────────────────
@@ -267,7 +374,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             ollama_messages_web: list[dict] = [{"role": "system", "content": web_system}]
             for m in prior_history[-6:]:
                 ollama_messages_web.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_web.append({"role": "user", "content": web_user_prompt})
+            ollama_messages_web.append({"role": "user", "content": f"{quote_ctx}{web_user_prompt}".strip()})
 
             answer_parts: list[str] = []
             prompt_tokens = 0
@@ -291,10 +398,11 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 return
 
             answer = "".join(answer_parts).strip()
+            latency_ms = int((time.monotonic() - stream_start) * 1000)
             db.append_message(
                 session_id, "assistant", answer,
                 prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="web", web_sources=results, cached=False
+                mode="web", web_sources=results, cached=False, latency_ms=latency_ms,
             )
             set_cached(body.message, "web", "web", answer, [], results, prompt_tokens, completion_tokens)
             yield _sse({
@@ -302,7 +410,8 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 "content": answer,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                "cached": False
+                "cached": False,
+                "latency_ms": latency_ms,
             })
 
         # ── RAG: query transform → FAISS → Qwen ────────────────────
@@ -329,7 +438,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             ollama_messages_rag: list[dict] = [{"role": "system", "content": rag_system}]
             for m in prior_history[-6:]:
                 ollama_messages_rag.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_rag.append({"role": "user", "content": rag_user_prompt})
+            ollama_messages_rag.append({"role": "user", "content": f"{quote_ctx}{rag_user_prompt}".strip()})
 
             answer_parts: list[str] = []
             prompt_tokens = 0
@@ -353,10 +462,11 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 return
 
             answer = "".join(answer_parts).strip()
+            latency_ms = int((time.monotonic() - stream_start) * 1000)
             db.append_message(
                 session_id, "assistant", answer,
                 prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="rag", sources=hits, cached=False
+                mode="rag", sources=hits, cached=False, latency_ms=latency_ms,
             )
             set_cached(body.message, "docs", "rag", answer, hits, [], prompt_tokens, completion_tokens)
             yield _sse({
@@ -364,7 +474,8 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 "content": answer,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                "cached": False
+                "cached": False,
+                "latency_ms": latency_ms,
             })
 
         # ── HYBRID: RAG + Web combined ──────────────────────────────
@@ -400,7 +511,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 "Cite document sources as [source_name p.X] (e.g. [AI Engineering.pdf p.12]) and web sources as [Web X] (e.g. [Web 1]) when using their information. "
                 "Be factual, thorough, and structure your response clearly."
             )
-            
+
             doc_snippets = []
             for h in hits:
                 doc_snippets.append(f"[{h['source']} p.{h.get('page_number')}] {h['text']}")
@@ -426,7 +537,7 @@ Answer:"""
             ollama_messages_hybrid = [{"role": "system", "content": hybrid_system}]
             for m in prior_history[-6:]:
                 ollama_messages_hybrid.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_hybrid.append({"role": "user", "content": hybrid_user_prompt})
+            ollama_messages_hybrid.append({"role": "user", "content": f"{quote_ctx}{hybrid_user_prompt}".strip()})
 
             answer_parts: list[str] = []
             prompt_tokens = 0
@@ -450,10 +561,12 @@ Answer:"""
                 return
 
             answer = "".join(answer_parts).strip()
+            latency_ms = int((time.monotonic() - stream_start) * 1000)
             db.append_message(
                 session_id, "assistant", answer,
                 prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="hybrid", sources=hits, web_sources=results, cached=False
+                mode="hybrid", sources=hits, web_sources=results, cached=False,
+                latency_ms=latency_ms,
             )
             set_cached(body.message, "hybrid", "hybrid", answer, hits, results, prompt_tokens, completion_tokens)
             yield _sse({
@@ -461,7 +574,8 @@ Answer:"""
                 "content": answer,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                "cached": False
+                "cached": False,
+                "latency_ms": latency_ms,
             })
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -761,6 +761,19 @@ img, svg { display: block; }
   gap: 2.5rem;
   align-items: center;
   position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99,102,241,0.25) transparent;
+}
+
+/* Thicker scrollbar scoped to the messages panel */
+.messages::-webkit-scrollbar { width: 6px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb {
+  background: rgba(99,102,241,0.22);
+  border-radius: 99px;
+}
+.messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(99,102,241,0.42);
 }
 
 /* ── Empty state ── */
@@ -941,6 +954,12 @@ img, svg { display: block; }
   color: var(--text-1);
 }
 
+/* Preserve selection highlight in assistant bubbles — use theme colour */
+.bubble.assistant ::selection {
+  background: rgba(99,102,241,0.38);
+  color: var(--text-1);
+}
+
 .bubble.assistant {
   background: transparent;
   border: none;
@@ -949,7 +968,34 @@ img, svg { display: block; }
   width: 100%;
 }
 
+
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
+
+/* Plain-text view during streaming — no markdown flicker */
+.streaming-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  font-size: 1rem;
+  color: var(--text-1);
+}
+
+/* Blinking cursor appended to streaming content */
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--indigo-400);
+  border-radius: 1px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 0.75s ease-in-out infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
 
 /* Thinking indicator */
 .agent-thinking {
@@ -1022,27 +1068,34 @@ img, svg { display: block; }
 }
 
 .floating-quote-btn {
-  position: absolute;
-  transform: translate(-50%, -100%);
+  /* Fixed to the viewport so scroll position never affects placement */
+  position: fixed;
+  transform: translateX(-50%);
   background: var(--surface);
-  border: 1px solid var(--border-2);
-  color: var(--text-2);
-  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--indigo-rim);
+  color: var(--text-1);
+  padding: 0.35rem 0.7rem;
   border-radius: var(--r-sm);
   font-size: 0.75rem;
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px rgba(99,102,241,0.2);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.25);
   cursor: pointer;
-  z-index: 1000;
-  transition: all var(--t-fast) var(--ease);
-  animation: slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 9999;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  animation: slide-up 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+  white-space: nowrap;
+  user-select: none;
 }
 .floating-quote-btn:hover {
-  background: var(--indigo-glow);
-  color: var(--text-1);
+  /* Solid background — no transparency bleed-through */
+  background: #1e2640;
+  border-color: var(--indigo-400);
+  color: var(--indigo-200);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(99,102,241,0.4);
 }
 
 /* ── Sources ── */
@@ -1211,6 +1264,19 @@ img, svg { display: block; }
   color: var(--ember-400);
   font-family: ui-monospace, monospace;
   font-weight: 500;
+}
+
+/* Latency badge — shown next to token stats */
+.latency-badge {
+  background: rgba(34,211,238,0.07);
+  color: var(--cyan-400);
+  border: 1px solid rgba(34,211,238,0.18);
+  border-radius: 3px;
+  padding: 0.02rem 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, monospace;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1454,6 +1520,23 @@ img, svg { display: block; }
 
 .send-btn:active:not(:disabled) { transform: scale(0.97); }
 .send-btn:disabled { opacity: 0.28; cursor: not-allowed; }
+
+/* Stop button — replaces send button during streaming */
+.send-btn.stop-btn {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 2px 8px rgba(239,68,68,0.35);
+  animation: stop-pulse 1.5s ease-in-out infinite;
+}
+
+.send-btn.stop-btn:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 4px 16px rgba(239,68,68,0.5);
+}
+
+@keyframes stop-pulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(239,68,68,0.35); }
+  50%       { box-shadow: 0 2px 16px rgba(239,68,68,0.6), 0 0 0 3px rgba(239,68,68,0.12); }
+}
 
 .send-spinner {
   width: 15px; height: 15px;

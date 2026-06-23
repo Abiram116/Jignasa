@@ -12,6 +12,7 @@ import {
   fetchSavedEvaluations,
   fetchStatus,
   saveEvaluation,
+  savePartialAssistant,
   streamChat,
   streamEvaluation,
   truncateConversation,
@@ -103,6 +104,11 @@ const Ic = {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="16 18 22 12 16 6"></polyline>
       <polyline points="8 6 2 12 8 18"></polyline>
+    </svg>
+  ),
+  Stop: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="4" y="4" width="16" height="16" rx="3" />
     </svg>
   ),
 }
@@ -315,6 +321,17 @@ function MessageBubble({
   onEdit?: (msg: Message) => void
 }) {
   const isTyping = isLast && isStreaming && !msg.message && msg.role === 'assistant'
+  const isStreamingContent = isLast && isStreaming && !!msg.message && msg.role === 'assistant'
+
+  const formatLatency = (ms: number) => {
+    if (ms >= 60000) {
+      const m = Math.floor(ms / 60000)
+      const s = Math.floor((ms % 60000) / 1000)
+      return `${m}m ${s}s`
+    }
+    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
+    return `${ms}ms`
+  }
 
   return (
     <div className={`bubble-row ${msg.role}`}>
@@ -331,6 +348,9 @@ function MessageBubble({
               <div className="thinking-dots"><span /><span /><span /></div>
               <span>Thinking…</span>
             </div>
+          ) : isStreamingContent ? (
+            // During streaming: show plain text with blinking cursor to avoid markdown flicker
+            <div className="streaming-plain">{msg.message}<span className="stream-cursor" /></div>
           ) : msg.role === 'assistant' ? (
             <MarkdownContent content={msg.message} />
           ) : (
@@ -352,6 +372,12 @@ function MessageBubble({
               <strong>Output:</strong> {msg.completion_tokens} t
               <span className="token-sep">·</span>
               <strong>Total:</strong> {(msg.prompt_tokens || 0) + (msg.completion_tokens || 0)} t
+              {msg.latency_ms != null && msg.latency_ms > 0 && (
+                <>
+                  <span className="token-sep">·</span>
+                  <span className="latency-badge">⏱ {formatLatency(msg.latency_ms)}</span>
+                </>
+              )}
               {msg.cached && (
                 <>
                   <span className="token-sep">·</span>
@@ -480,6 +506,7 @@ function App() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
+  // viewport-fixed coords (top/left come straight from getBoundingClientRect)
   const [quoteSelection, setQuoteSelection] = useState<{text: string, top: number, left: number} | null>(null)
   const [quotedText, setQuotedText] = useState<string | null>(null)
 
@@ -492,8 +519,22 @@ function App() {
   const [saved, setSaved] = useState<SavedEval[]>([])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const startTimeRef = useRef<number>(0)
 
   const MAX_CHARS = 2000
+
+  // Dismiss the floating quote button whenever the user clicks anywhere that
+  // isn't the button itself, so it never gets "stuck" on screen.
+  useEffect(() => {
+    const dismiss = (e: MouseEvent) => {
+      if (!(e.target as Element).closest('.floating-quote-btn')) {
+        setQuoteSelection(null)
+      }
+    }
+    document.addEventListener('mousedown', dismiss)
+    return () => document.removeEventListener('mousedown', dismiss)
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -599,13 +640,10 @@ function App() {
   }
 
   const handleTextSelection = (e: React.MouseEvent) => {
-    if ((e.target as Element).closest('.floating-quote-btn')) {
-      return // Ignore mouseups on the quote button itself
-    }
-    
-    const container = e.currentTarget as HTMLElement
-    
-    // Slight delay to ensure browser selection has settled
+    // Ignore mouseups originating on the quote button itself
+    if ((e.target as Element).closest('.floating-quote-btn')) return
+
+    // Small delay so the browser finalises the selection before we read it
     setTimeout(() => {
       const selection = window.getSelection()
       if (!selection || selection.isCollapsed) {
@@ -613,19 +651,29 @@ function App() {
         return
       }
       const text = selection.toString().trim()
-      if (!text) {
+      if (!text || text.length < 3) {
         setQuoteSelection(null)
         return
       }
+
+      // Only allow quoting text that lives inside an assistant bubble
+      const anchorNode = selection.anchorNode
+      if (!anchorNode) { setQuoteSelection(null); return }
+      const bubbleEl = (anchorNode.nodeType === Node.TEXT_NODE
+        ? anchorNode.parentElement
+        : anchorNode as Element
+      )?.closest('.bubble.assistant')
+      if (!bubbleEl) { setQuoteSelection(null); return }
+
       const range = selection.getRangeAt(0)
       const rect = range.getBoundingClientRect()
-      const containerRect = container.getBoundingClientRect()
-      
-      // Calculate position absolute relative to the .messages container
+      if (rect.width === 0 && rect.height === 0) { setQuoteSelection(null); return }
+
+      // Use viewport-fixed coordinates so scroll position never affects placement
       setQuoteSelection({
         text,
-        top: rect.top - containerRect.top + container.scrollTop - 40,
-        left: rect.left - containerRect.left + container.scrollLeft + rect.width / 2
+        top: rect.top - 44,   // 44px above the selection top
+        left: rect.left + rect.width / 2,
       })
     }, 10)
   }
@@ -637,23 +685,29 @@ function App() {
     window.getSelection()?.removeAllRanges()
   }
 
+  const handleStop = () => {
+    abortRef.current?.abort()
+  }
+
   const handleSend = async () => {
     if (!input.trim() || streaming) return
-    
-    // Construct final text with quote if present
-    let finalPayload = input.trim()
-    if (quotedText) {
-      const formattedQuote = quotedText.split('\n').map(line => `> ${line}`).join('\n')
-      finalPayload = `${formattedQuote}\n\n${finalPayload}`
-    }
-    
+
+    const userQuestion = input.trim()
+    const activeQuote = quotedText
+
     setInput('')
     setQuotedText(null)
     setError('')
     setStreaming(true)
+    startTimeRef.current = Date.now()
 
-    // Optimistically add user message
-    setMessages((m) => [...m, { role: 'user', message: finalPayload }])
+    // Display message: show the quote context visually so the user sees what they sent
+    const displayMessage = activeQuote
+      ? `> ${activeQuote}\n\n${userQuestion}`
+      : userQuestion
+
+    // Optimistically add user message (display form)
+    setMessages((m) => [...m, { role: 'user', message: displayMessage }])
     // Placeholder assistant bubble
     setMessages((m) => [...m, { role: 'assistant', message: '' }])
 
@@ -663,10 +717,15 @@ function App() {
     let pendingCached = false
     let pendingPromptTokens = 0
     let pendingCompletionTokens = 0
+    let pendingLatencyMs = 0
     let assistant = ''
 
+    // Create abort controller for this request
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
-      await streamChat(sessionId!, finalPayload, selectedMode, (event) => {
+      await streamChat(sessionId!, userQuestion, selectedMode, (event) => {
         if (event.type === 'intent') {
           pendingMode = event.mode
           // Update placeholder bubble mode immediately
@@ -697,11 +756,23 @@ function App() {
           pendingPromptTokens = event.prompt_tokens ?? 0
           pendingCompletionTokens = event.completion_tokens ?? 0
           pendingCached = event.cached ?? false
+          pendingLatencyMs = event.latency_ms ?? 0
+
+          // Post-process web citations: replace [N] with clickable markdown links
+          if (pendingWebSources.length > 0) {
+            assistant = assistant.replace(/\[(\d+)\]/g, (_match, n: string) => {
+              const idx = parseInt(n, 10) - 1
+              if (idx >= 0 && idx < pendingWebSources.length) {
+                return `[[${n}]](${pendingWebSources[idx].url})`
+              }
+              return `[${n}]`
+            })
+          }
         }
         if (event.type === 'error') setError(event.message ?? 'Chat error')
-      })
+      }, activeQuote, controller.signal)
 
-      // Finalise bubble with sources and tokens attached
+      // Finalise bubble with sources, tokens and latency attached
       setMessages((m) => {
         const copy = [...m]
         copy[copy.length - 1] = {
@@ -713,13 +784,14 @@ function App() {
           prompt_tokens: pendingPromptTokens,
           completion_tokens: pendingCompletionTokens,
           cached: pendingCached,
+          latency_ms: pendingLatencyMs,
         }
         return copy
       })
 
       const data = await fetchMessages(sessionId!)
       setTitle(data.title)
-      // Re-sync messages from server but preserve source annotations and token stats on latest
+      // Re-sync messages from server but preserve source annotations, token stats and latency on latest
       setMessages((current) => {
         const serverMsgs = data.messages
         if (!serverMsgs.length) return current
@@ -728,20 +800,67 @@ function App() {
         if (last?.role === 'assistant' && merged.length) {
           merged[merged.length - 1] = {
             ...merged[merged.length - 1],
+            // Preserve post-processed message (e.g. citation links [[N]](url)) from client state
+            message: last.message,
             mode: last.mode,
             sources: last.sources,
             webSources: last.webSources,
             prompt_tokens: last.prompt_tokens,
             completion_tokens: last.completion_tokens,
             cached: last.cached,
+            latency_ms: last.latency_ms,
           }
         }
         return merged
       })
     } catch (e) {
-      setError(String(e))
+      if (e instanceof DOMException && (e as DOMException).name === 'AbortError') {
+        // ── User clicked Stop ──────────────────────────────────────────
+        // Count meaningful lines generated so far
+        const newlineCount = (assistant.match(/\n/g) || []).length
+        const charCount = assistant.trim().length
+
+        if (newlineCount >= 4 || charCount >= 300) {
+          // Enough content — keep it with a stopped marker and save to DB
+          const stoppedMsg = assistant.trimEnd() + '\n\n*[Response stopped by user]*'
+          const elapsedMs = Date.now() - startTimeRef.current
+
+          setMessages((m) => {
+            const copy = [...m]
+            copy[copy.length - 1] = {
+              role: 'assistant',
+              message: stoppedMsg,
+              mode: pendingMode,
+              sources: pendingSources.length ? pendingSources : undefined,
+              webSources: pendingWebSources.length ? pendingWebSources : undefined,
+              prompt_tokens: pendingPromptTokens,
+              completion_tokens: pendingCompletionTokens,
+              latency_ms: elapsedMs,
+            }
+            return copy
+          })
+
+          // Persist partial to DB
+          try {
+            await savePartialAssistant(
+              sessionId!,
+              stoppedMsg,
+              pendingMode,
+              pendingPromptTokens,
+              pendingCompletionTokens,
+              elapsedMs,
+            )
+          } catch {/* non-fatal */}
+        } else {
+          // Too short — discard assistant bubble entirely (user message stays in DB)
+          setMessages((m) => m.slice(0, -1))
+        }
+      } else {
+        setError(String(e))
+      }
     } finally {
       setStreaming(false)
+      abortRef.current = null
       await refreshConversations()
     }
   }
@@ -1033,7 +1152,6 @@ function App() {
                       key={m}
                       className={`mode-btn mode-btn-${m} ${selectedMode === m ? 'active' : ''}`}
                       onClick={() => setSelectedMode(m)}
-                      disabled={streaming}
                     >
                       {label}
                     </button>
@@ -1051,7 +1169,7 @@ function App() {
                   </div>
                 )}
                 
-                <div className={`input-box ${streaming ? 'disabled' : ''}`}>
+                <div className="input-box">
                   <AutoTextarea
                     value={input}
                     onChange={setInput}
@@ -1059,18 +1177,18 @@ function App() {
                       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
                     }}
                     placeholder="Ask anything — documents, web, or just chat…"
-                    disabled={streaming || (!status?.ready && !loadingApp)}
+                    disabled={!status?.ready && !loadingApp}
                     maxLength={MAX_CHARS}
                   />
                   <button
                     id="btn-send"
-                    className="send-btn"
-                    onClick={handleSend}
-                    disabled={streaming || !input.trim()}
-                    title="Send (Enter)"
+                    className={`send-btn${streaming ? ' stop-btn' : ''}`}
+                    onClick={streaming ? handleStop : handleSend}
+                    disabled={!streaming && !input.trim()}
+                    title={streaming ? 'Stop generation (keeps partial if long enough)' : 'Send (Enter)'}
                   >
                     {streaming
-                      ? <div className="send-spinner" />
+                      ? <Ic.Stop />
                       : <Ic.Send />
                     }
                   </button>

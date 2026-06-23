@@ -53,7 +53,7 @@ def _normalise(text: str) -> str:
 
 def classify_intent(message: str) -> str:
     """
-    Classify message intent without calling the LLM.
+    Classify message intent without calling the LLM (pure heuristic).
 
     Returns: "casual" | "web" | "rag"
     """
@@ -78,3 +78,82 @@ def classify_intent(message: str) -> str:
 
     # 3. Default to RAG
     return "rag"
+
+
+def classify_intent_llm(message: str) -> str:
+    """
+    Use Ollama tool-calling to let the model route the query.
+
+    The model picks one of three tools:
+      - casual_response  → "casual"
+      - rag_search       → "rag"
+      - web_search       → "web"
+
+    Falls back to the heuristic classify_intent() on any error or if the
+    model does not call a tool.
+
+    Returns: "casual" | "rag" | "web"
+    """
+    from ollama import chat as _ollama_chat  # local import to keep module fast
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "casual_response",
+                "description": (
+                    "Use this when the message is casual conversation, a greeting, "
+                    "small talk, simple thanks, or a factual question that can be "
+                    "answered from general knowledge without searching documents or the web."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "rag_search",
+                "description": (
+                    "Use this when the message asks a question that should be "
+                    "answered from the user's local knowledge-base documents or PDFs "
+                    "(technical questions, document-specific queries, domain knowledge)."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": (
+                    "Use this when the message requires live or up-to-date information "
+                    "from the internet: current events, breaking news, today's prices, "
+                    "sports scores, weather, or anything that changes over time."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+    ]
+
+    _TOOL_MAP = {
+        "casual_response": "casual",
+        "rag_search": "rag",
+        "web_search": "web",
+    }
+
+    try:
+        resp = _ollama_chat(
+            model=OLLAMA_MODEL,
+            messages=[{"role": "user", "content": message}],
+            tools=tools,
+            think=False,
+            options={"temperature": 0, "num_predict": 64},
+        )
+        if resp.message.tool_calls:
+            name = resp.message.tool_calls[0].function.name
+            return _TOOL_MAP.get(name, "rag")
+        # Model produced text instead of a tool call → fall through
+    except Exception:
+        pass  # network error, unsupported model version, etc.
+
+    return classify_intent(message)

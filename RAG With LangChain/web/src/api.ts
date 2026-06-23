@@ -47,7 +47,7 @@ export type ChatEvent =
   | { type: 'sources'; sources: Source[] }
   | { type: 'web_sources'; sources: WebSource[] }
   | { type: 'token'; content: string }
-  | { type: 'done'; content: string; prompt_tokens?: number; completion_tokens?: number; cached?: boolean }
+  | { type: 'done'; content: string; prompt_tokens?: number; completion_tokens?: number; cached?: boolean; latency_ms?: number }
   | { type: 'error'; message: string }
 
 export async function streamChat(
@@ -55,11 +55,14 @@ export async function streamChat(
   message: string,
   mode: ChatMode,
   onEvent: (event: ChatEvent) => void,
+  quotedText?: string | null,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${API}/conversations/${sessionId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, mode }),
+    body: JSON.stringify({ message, mode, quoted_text: quotedText ?? null }),
+    signal,
   })
   if (!res.ok) throw new Error(await res.text())
   const reader = res.body?.getReader()
@@ -121,6 +124,27 @@ export async function saveEvaluation(name: string, k: number): Promise<SavedEval
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
+}
+
+export async function savePartialAssistant(
+  sessionId: string,
+  message: string,
+  mode: string,
+  promptTokens: number,
+  completionTokens: number,
+  latencyMs: number,
+): Promise<void> {
+  await fetch(`${API}/conversations/${sessionId}/partial-assistant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      mode,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      latency_ms: latencyMs,
+    }),
+  })
 }
 
 export type { EvalSummary, EvalProgress }
