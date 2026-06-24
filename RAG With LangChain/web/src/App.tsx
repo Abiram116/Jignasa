@@ -111,6 +111,11 @@ const Ic = {
       <rect x="4" y="4" width="16" height="16" rx="3" />
     </svg>
   ),
+  Search: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+  ),
 }
 
 /* ── Auto-resize textarea ──────────────────────────────────────────── */
@@ -245,80 +250,108 @@ function WebSources({ sources, defaultOpen = false }: { sources: WebSource[]; de
   )
 }
 
-/* ── Markdown renderer ─────────────────────────────────────────────── */
-function MarkdownContent({ content }: { content: string }) {
+/* ── Markdown renderer — used during streaming AND after ───────────── */
+function MarkdownContent({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) {
   return (
-    <ReactMarkdown
-      components={{
-        // Code blocks with syntax highlighting
-        code({ className, children, ...props }) {
-          const match = /language-(\w+)/.exec(className || '')
-          const codeStr = String(children).replace(/\n$/, '')
-          const isBlock = codeStr.includes('\n') || match
-          if (isBlock) {
-            const lang = match?.[1] || 'text'
-            return (
-              <div className="code-block-wrapper">
-                <div className="code-block-header">
-                  <span className="code-lang"><Ic.Code /> {lang}</span>
-                  <CopyButton text={codeStr} />
+    <div className={isStreaming ? 'md-streaming' : ''}>
+      <ReactMarkdown
+        components={{
+          code({ className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '')
+            const codeStr = String(children).replace(/\n$/, '')
+            const isBlock = codeStr.includes('\n') || match
+            if (isBlock) {
+              const lang = match?.[1] || 'text'
+              return (
+                <div className="code-block-wrapper">
+                  <div className="code-block-header">
+                    <span className="code-lang"><Ic.Code /> {lang}</span>
+                    <CopyButton text={codeStr} />
+                  </div>
+                  <SyntaxHighlighter
+                    style={oneDark}
+                    language={lang}
+                    PreTag="div"
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: '0 0 12px 12px',
+                      fontSize: '0.85rem',
+                      background: '#0d1117',
+                      border: 'none',
+                      padding: '1rem',
+                    }}
+                  >
+                    {codeStr}
+                  </SyntaxHighlighter>
                 </div>
-                <SyntaxHighlighter
-                  style={oneDark}
-                  language={lang}
-                  PreTag="div"
-                  customStyle={{
-                    margin: 0,
-                    borderRadius: '0 0 12px 12px',
-                    fontSize: '0.85rem',
-                    background: '#0d1117',
-                    border: 'none',
-                    padding: '1rem',
-                  }}
-                >
-                  {codeStr}
-                </SyntaxHighlighter>
-              </div>
+              )
+            }
+            return <code className="md-inline-code" {...props}>{children}</code>
+          },
+          p({ children }) { return <p className="md-p">{children}</p> },
+          ul({ children }) { return <ul className="md-ul">{children}</ul> },
+          ol({ children }) { return <ol className="md-ol">{children}</ol> },
+          li({ children }) { return <li className="md-li">{children}</li> },
+          h1({ children }) { return <h1 className="md-h1">{children}</h1> },
+          h2({ children }) { return <h2 className="md-h2">{children}</h2> },
+          h3({ children }) { return <h3 className="md-h3">{children}</h3> },
+          strong({ children }) { return <strong className="md-strong">{children}</strong> },
+          em({ children }) { return <em className="md-em">{children}</em> },
+          blockquote({ children }) { return <blockquote className="md-blockquote">{children}</blockquote> },
+          hr() { return <hr className="md-hr" /> },
+          // ── Clickable links from web citations ──
+          a({ href, children }) {
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="md-link">
+                {children}
+              </a>
             )
-          }
-          return <code className="md-inline-code" {...props}>{children}</code>
-        },
-        // Paragraphs
-        p({ children }) { return <p className="md-p">{children}</p> },
-        // Lists
-        ul({ children }) { return <ul className="md-ul">{children}</ul> },
-        ol({ children }) { return <ol className="md-ol">{children}</ol> },
-        li({ children }) { return <li className="md-li">{children}</li> },
-        // Headings
-        h1({ children }) { return <h1 className="md-h1">{children}</h1> },
-        h2({ children }) { return <h2 className="md-h2">{children}</h2> },
-        h3({ children }) { return <h3 className="md-h3">{children}</h3> },
-        // Bold & italic
-        strong({ children }) { return <strong className="md-strong">{children}</strong> },
-        em({ children }) { return <em className="md-em">{children}</em> },
-        // Blockquotes
-        blockquote({ children }) { return <blockquote className="md-blockquote">{children}</blockquote> },
-        // Horizontal rule
-        hr() { return <hr className="md-hr" /> },
-        // Links
-        a({ href, children }) {
-          return <a href={href} target="_blank" rel="noopener noreferrer" className="md-link">{children}</a>
-        },
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+      {isStreaming && <span className="stream-cursor" />}
+    </div>
+  )
+}
+
+/* ── Web Search Confirmation bubble ─────────────────────────────────── */
+function WebSearchConfirm({
+  message,
+  onYes,
+  onNo,
+}: {
+  message: string
+  onYes: () => void
+  onNo: () => void
+}) {
+  return (
+    <div className="web-search-confirm">
+      <div className="web-search-confirm-icon"><Ic.Search /></div>
+      <p className="web-search-confirm-msg">{message}</p>
+      <div className="web-search-confirm-actions">
+        <button className="web-confirm-btn yes" onClick={onYes}>
+          <Ic.Globe /> Search the web
+        </button>
+        <button className="web-confirm-btn no" onClick={onNo}>
+          No thanks
+        </button>
+      </div>
+    </div>
   )
 }
 
 /* ── Message bubble ────────────────────────────────────────────────── */
 function MessageBubble({
-  msg, isLast, isStreaming, onEdit
+  msg, isLast, isStreaming, onEdit, onConfirmWeb, onDeclineWeb,
 }: {
   msg: Message
   isLast: boolean
   isStreaming: boolean
   onEdit?: (msg: Message) => void
+  onConfirmWeb?: () => void
+  onDeclineWeb?: () => void
 }) {
   const isTyping = isLast && isStreaming && !msg.message && msg.role === 'assistant'
   const isStreamingContent = isLast && isStreaming && !!msg.message && msg.role === 'assistant'
@@ -348,15 +381,20 @@ function MessageBubble({
               <div className="thinking-dots"><span /><span /><span /></div>
               <span>Thinking…</span>
             </div>
+          ) : msg.askWebSearch && !isStreaming ? (
+            <WebSearchConfirm
+              message={msg.askWebSearch}
+              onYes={onConfirmWeb!}
+              onNo={onDeclineWeb!}
+            />
           ) : isStreamingContent ? (
-            // During streaming: show plain text with blinking cursor to avoid markdown flicker
-            <div className="streaming-plain">{msg.message}<span className="stream-cursor" /></div>
+            // Stream with live markdown rendering — no flicker since we render as it comes
+            <MarkdownContent content={msg.message} isStreaming={true} />
           ) : msg.role === 'assistant' ? (
             <MarkdownContent content={msg.message} />
           ) : (
             <div className="bubble-text">{msg.message}</div>
           )}
-          {/* Sources — collapsed by default */}
           {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && !isStreaming && (
             <RagSources sources={msg.sources} defaultOpen={false} />
           )}
@@ -385,15 +423,9 @@ function MessageBubble({
                 </>
               )}
             </div>
-            <div className="token-cost-row">
-              <span>Cost (Est. GPT-4o): </span>
-              <strong className="cost-val">
-                ${((msg.prompt_tokens || 0) * 0.0000025 + (msg.completion_tokens || 0) * 0.00001).toFixed(5)}
-              </strong>
-            </div>
           </div>
         )}
-        {msg.role === 'assistant' && msg.message && !isStreaming && (
+        {msg.role === 'assistant' && msg.message && !isStreaming && !msg.askWebSearch && (
           <div className="bubble-actions">
             <CopyButton text={msg.message} />
           </div>
@@ -409,6 +441,7 @@ function MessageBubble({
     </div>
   )
 }
+
 /* ── Cost Calculator Modal ─────────────────────────────────────────── */
 function CostCalculatorModal({
   messages, onClose,
@@ -418,68 +451,44 @@ function CostCalculatorModal({
 }) {
   const totalPrompt = messages.reduce((sum, m) => sum + (m.prompt_tokens || 0), 0)
   const totalCompletion = messages.reduce((sum, m) => sum + (m.completion_tokens || 0), 0)
-  const totalTokens = totalPrompt + totalCompletion
-
-  const models = [
-    { name: 'GPT-4o (Standard)',     inRate: 2.50,  outRate: 10.00 },
-    { name: 'Claude 3.5 Sonnet',     inRate: 3.00,  outRate: 15.00 },
-    { name: 'GPT-4o mini',           inRate: 0.15,  outRate: 0.60  },
-    { name: 'Gemini 1.5 Flash',      inRate: 0.075, outRate: 0.30  },
-    { name: 'Llama 3.1 70B (Groq)',  inRate: 0.59,  outRate: 0.79  },
-  ]
-
+  const rows = [
+    ['GPT-4o',           0.0000025,  0.00001  ],
+    ['GPT-4o mini',      0.00000015, 0.0000006],
+    ['Claude Sonnet',    0.000003,   0.000015 ],
+    ['Claude Haiku',     0.00000025, 0.00000125],
+    ['Gemini 1.5 Pro',   0.00000125, 0.000005 ],
+    ['Gemini Flash',     0.000000075,0.0000003 ],
+  ] as [string, number, number][]
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Conversation Cost Calculator</h3>
+          <h3>Token cost estimate</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="cost-stats-grid">
-            <div className="stat-card">
-              <span className="stat-card-label">Input Tokens</span>
-              <span className="stat-card-value">{totalPrompt.toLocaleString()}</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-card-label">Output Tokens</span>
-              <span className="stat-card-value">{totalCompletion.toLocaleString()}</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-card-label">Total Tokens</span>
-              <span className="stat-card-value">{totalTokens.toLocaleString()}</span>
-            </div>
-          </div>
-          
-          <div className="cost-table-wrap">
-            <table className="cost-table">
-              <thead>
-                <tr>
-                  <th>Model Name</th>
-                  <th style={{ textAlign: 'right' }}>Input Rate (per 1M)</th>
-                  <th style={{ textAlign: 'right' }}>Output Rate (per 1M)</th>
-                  <th style={{ textAlign: 'right' }}>Calculated Cost</th>
+          <p className="cost-summary">
+            This conversation used <strong>{totalPrompt.toLocaleString()}</strong> input tokens
+            and <strong>{totalCompletion.toLocaleString()}</strong> output tokens
+            ({(totalPrompt + totalCompletion).toLocaleString()} total).
+          </p>
+          <table>
+            <thead>
+              <tr><th>Model</th><th>Input</th><th>Output</th><th>Total</th></tr>
+            </thead>
+            <tbody>
+              {rows.map(([name, iRate, oRate]) => (
+                <tr key={name}>
+                  <td>{name}</td>
+                  <td>${(totalPrompt * iRate).toFixed(4)}</td>
+                  <td>${(totalCompletion * oRate).toFixed(4)}</td>
+                  <td><strong>${(totalPrompt * iRate + totalCompletion * oRate).toFixed(4)}</strong></td>
                 </tr>
-              </thead>
-              <tbody>
-                {models.map((m) => {
-                  const cost = (totalPrompt * m.inRate + totalCompletion * m.outRate) / 1_000_000
-                  return (
-                    <tr key={m.name}>
-                      <td style={{ fontWeight: 'bold' }}>{m.name}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text-3)' }}>${m.inRate.toFixed(3)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text-3)' }}>${m.outRate.toFixed(3)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--ember-400)' }}>
-                        ${cost < 0.00001 && cost > 0 ? cost.toFixed(7) : cost.toFixed(5)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
           <p className="cost-note">
-            * Rates are based on official pricing APIs as of 2024/2025. Compare this local model's token volume against typical production workloads to estimate cost before deploying to staging/prod.
+            * Rates based on official pricing as of 2024/2025.
           </p>
         </div>
       </div>
@@ -506,9 +515,18 @@ function App() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
-  // viewport-fixed coords (top/left come straight from getBoundingClientRect)
+
+  // Selection highlight state — keeps the selection highlighted until quote is clicked
+  const [activeSelection, setActiveSelection] = useState<string | null>(null)
   const [quoteSelection, setQuoteSelection] = useState<{text: string, top: number, left: number} | null>(null)
   const [quotedText, setQuotedText] = useState<string | null>(null)
+
+  // Pending web search confirmation state
+  const [pendingWebConfirm, setPendingWebConfirm] = useState<{
+    userMessage: string
+    userDisplay: string
+    quote: string | null
+  } | null>(null)
 
   const [evalK, setEvalK] = useState(5)
   const [evalRunning, setEvalRunning] = useState(false)
@@ -524,12 +542,14 @@ function App() {
 
   const MAX_CHARS = 2000
 
-  // Dismiss the floating quote button whenever the user clicks anywhere that
-  // isn't the button itself, so it never gets "stuck" on screen.
+  // Dismiss quote button on click outside
   useEffect(() => {
     const dismiss = (e: MouseEvent) => {
-      if (!(e.target as Element).closest('.floating-quote-btn')) {
+      if ((e.target as Element).closest('.floating-quote-btn')) return
+      // Only dismiss if user isn't clicking inside a bubble (to let selection be read)
+      if (!(e.target as Element).closest('.bubble.assistant')) {
         setQuoteSelection(null)
+        setActiveSelection(null)
       }
     }
     document.addEventListener('mousedown', dismiss)
@@ -544,7 +564,7 @@ function App() {
     setConversations(await fetchConversations())
   }, [])
 
-  /* ── Bootstrap with retry ── */
+  /* ── Bootstrap ── */
   useEffect(() => {
     let cancelled = false
     const MAX = 20
@@ -599,6 +619,7 @@ function App() {
     setSessionId(c.session_id)
     setMessages([])
     setTitle('New Chat')
+    setPendingWebConfirm(null)
     await refreshConversations()
   }
 
@@ -618,9 +639,7 @@ function App() {
     try {
       await renameConversation(id, newTitle.trim())
       await refreshConversations()
-      if (id === sessionId) {
-        setTitle(newTitle.trim())
-      }
+      if (id === sessionId) setTitle(newTitle.trim())
     } catch (e) {
       setError(String(e))
     }
@@ -629,7 +648,6 @@ function App() {
   const handleEditMessage = async (msg: Message) => {
     if (!sessionId || !msg.id || streaming) return
     if (!confirm('This will delete this message and all subsequent messages. Continue?')) return
-    
     setInput(msg.message)
     try {
       await truncateConversation(sessionId, msg.id)
@@ -640,39 +658,40 @@ function App() {
   }
 
   const handleTextSelection = (e: React.MouseEvent) => {
-    // Ignore mouseups originating on the quote button itself
     if ((e.target as Element).closest('.floating-quote-btn')) return
 
-    // Small delay so the browser finalises the selection before we read it
     setTimeout(() => {
       const selection = window.getSelection()
       if (!selection || selection.isCollapsed) {
-        setQuoteSelection(null)
+        if (!quoteSelection) {
+          setActiveSelection(null)
+        }
         return
       }
       const text = selection.toString().trim()
       if (!text || text.length < 3) {
         setQuoteSelection(null)
+        setActiveSelection(null)
         return
       }
 
-      // Only allow quoting text that lives inside an assistant bubble
       const anchorNode = selection.anchorNode
-      if (!anchorNode) { setQuoteSelection(null); return }
+      if (!anchorNode) { setQuoteSelection(null); setActiveSelection(null); return }
       const bubbleEl = (anchorNode.nodeType === Node.TEXT_NODE
         ? anchorNode.parentElement
         : anchorNode as Element
       )?.closest('.bubble.assistant')
-      if (!bubbleEl) { setQuoteSelection(null); return }
+      if (!bubbleEl) { setQuoteSelection(null); setActiveSelection(null); return }
 
       const range = selection.getRangeAt(0)
       const rect = range.getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) { setQuoteSelection(null); return }
 
-      // Use viewport-fixed coordinates so scroll position never affects placement
+      // Keep highlight alive by saving the selected text
+      setActiveSelection(text)
       setQuoteSelection({
         text,
-        top: rect.top - 44,   // 44px above the selection top
+        top: rect.top - 44,
         left: rect.left + rect.width / 2,
       })
     }, 10)
@@ -682,6 +701,7 @@ function App() {
     if (!quoteSelection) return
     setQuotedText(quoteSelection.text)
     setQuoteSelection(null)
+    setActiveSelection(null)
     window.getSelection()?.removeAllRanges()
   }
 
@@ -689,26 +709,17 @@ function App() {
     abortRef.current?.abort()
   }
 
-  const handleSend = async () => {
-    if (!input.trim() || streaming) return
-
-    const userQuestion = input.trim()
-    const activeQuote = quotedText
-
-    setInput('')
-    setQuotedText(null)
+  const runStream = async (
+    userQuestion: string,
+    displayMessage: string,
+    activeQuote: string | null,
+    confirmWebSearch = false,
+  ) => {
     setError('')
     setStreaming(true)
     startTimeRef.current = Date.now()
 
-    // Display message: show the quote context visually so the user sees what they sent
-    const displayMessage = activeQuote
-      ? `> ${activeQuote}\n\n${userQuestion}`
-      : userQuestion
-
-    // Optimistically add user message (display form)
     setMessages((m) => [...m, { role: 'user', message: displayMessage }])
-    // Placeholder assistant bubble
     setMessages((m) => [...m, { role: 'assistant', message: '' }])
 
     let pendingMode: ChatMode = 'rag'
@@ -719,8 +730,8 @@ function App() {
     let pendingCompletionTokens = 0
     let pendingLatencyMs = 0
     let assistant = ''
+    let askedWebSearch = false
 
-    // Create abort controller for this request
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -728,7 +739,6 @@ function App() {
       await streamChat(sessionId!, userQuestion, selectedMode, (event) => {
         if (event.type === 'intent') {
           pendingMode = event.mode
-          // Update placeholder bubble mode immediately
           setMessages((m) => {
             const copy = [...m]
             copy[copy.length - 1] = { ...copy[copy.length - 1], mode: pendingMode }
@@ -740,6 +750,29 @@ function App() {
         }
         if (event.type === 'sources') pendingSources = event.sources
         if (event.type === 'web_sources') pendingWebSources = event.sources
+
+        // ── Backend asks if user wants web search ──
+        if (event.type === 'ask_web_search') {
+          askedWebSearch = true
+          const askMsg = event.message as string
+          // Replace the assistant placeholder with the confirm prompt
+          setMessages((m) => {
+            const copy = [...m]
+            copy[copy.length - 1] = {
+              role: 'assistant',
+              message: '',
+              askWebSearch: askMsg,
+            }
+            return copy
+          })
+          // Save context for when user answers
+          setPendingWebConfirm({
+            userMessage: userQuestion,
+            userDisplay: displayMessage,
+            quote: activeQuote,
+          })
+        }
+
         if (event.type === 'token' && event.content) {
           assistant += event.content
           setMessages((m) => {
@@ -770,58 +803,54 @@ function App() {
           }
         }
         if (event.type === 'error') setError(event.message ?? 'Chat error')
-      }, activeQuote, controller.signal)
+      }, activeQuote, controller.signal, confirmWebSearch)
 
-      // Finalise bubble with sources, tokens and latency attached
-      setMessages((m) => {
-        const copy = [...m]
-        copy[copy.length - 1] = {
-          role: 'assistant',
-          message: assistant,
-          mode: pendingMode,
-          sources: pendingSources.length ? pendingSources : undefined,
-          webSources: pendingWebSources.length ? pendingWebSources : undefined,
-          prompt_tokens: pendingPromptTokens,
-          completion_tokens: pendingCompletionTokens,
-          cached: pendingCached,
-          latency_ms: pendingLatencyMs,
-        }
-        return copy
-      })
-
-      const data = await fetchMessages(sessionId!)
-      setTitle(data.title)
-      // Re-sync messages from server but preserve source annotations, token stats and latency on latest
-      setMessages((current) => {
-        const serverMsgs = data.messages
-        if (!serverMsgs.length) return current
-        const last = current[current.length - 1]
-        const merged = [...serverMsgs]
-        if (last?.role === 'assistant' && merged.length) {
-          merged[merged.length - 1] = {
-            ...merged[merged.length - 1],
-            // Preserve post-processed message (e.g. citation links [[N]](url)) from client state
-            message: last.message,
-            mode: last.mode,
-            sources: last.sources,
-            webSources: last.webSources,
-            prompt_tokens: last.prompt_tokens,
-            completion_tokens: last.completion_tokens,
-            cached: last.cached,
-            latency_ms: last.latency_ms,
+      if (!askedWebSearch) {
+        setMessages((m) => {
+          const copy = [...m]
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            message: assistant,
+            mode: pendingMode,
+            sources: pendingSources.length ? pendingSources : undefined,
+            webSources: pendingWebSources.length ? pendingWebSources : undefined,
+            prompt_tokens: pendingPromptTokens,
+            completion_tokens: pendingCompletionTokens,
+            cached: pendingCached,
+            latency_ms: pendingLatencyMs,
           }
-        }
-        return merged
-      })
+          return copy
+        })
+
+        const data = await fetchMessages(sessionId!)
+        setTitle(data.title)
+        setMessages((current) => {
+          const serverMsgs = data.messages
+          if (!serverMsgs.length) return current
+          const last = current[current.length - 1]
+          const merged = [...serverMsgs]
+          if (last?.role === 'assistant' && merged.length) {
+            merged[merged.length - 1] = {
+              ...merged[merged.length - 1],
+              message: last.message,
+              mode: last.mode,
+              sources: last.sources,
+              webSources: last.webSources,
+              prompt_tokens: last.prompt_tokens,
+              completion_tokens: last.completion_tokens,
+              cached: last.cached,
+              latency_ms: last.latency_ms,
+            }
+          }
+          return merged
+        })
+      }
     } catch (e) {
       if (e instanceof DOMException && (e as DOMException).name === 'AbortError') {
-        // ── User clicked Stop ──────────────────────────────────────────
-        // Count meaningful lines generated so far
         const newlineCount = (assistant.match(/\n/g) || []).length
         const charCount = assistant.trim().length
 
         if (newlineCount >= 4 || charCount >= 300) {
-          // Enough content — keep it with a stopped marker and save to DB
           const stoppedMsg = assistant.trimEnd() + '\n\n*[Response stopped by user]*'
           const elapsedMs = Date.now() - startTimeRef.current
 
@@ -840,19 +869,13 @@ function App() {
             return copy
           })
 
-          // Persist partial to DB
           try {
             await savePartialAssistant(
-              sessionId!,
-              stoppedMsg,
-              pendingMode,
-              pendingPromptTokens,
-              pendingCompletionTokens,
-              elapsedMs,
+              sessionId!, stoppedMsg, pendingMode,
+              pendingPromptTokens, pendingCompletionTokens, elapsedMs,
             )
           } catch {/* non-fatal */}
         } else {
-          // Too short — discard assistant bubble entirely (user message stays in DB)
           setMessages((m) => m.slice(0, -1))
         }
       } else {
@@ -863,6 +886,77 @@ function App() {
       abortRef.current = null
       await refreshConversations()
     }
+  }
+
+  const handleSend = async () => {
+    if (!input.trim() || streaming) return
+
+    const userQuestion = input.trim()
+    const activeQuote = quotedText
+
+    setInput('')
+    setQuotedText(null)
+    setPendingWebConfirm(null)
+
+    const displayMessage = activeQuote
+      ? `> ${activeQuote}\n\n${userQuestion}`
+      : userQuestion
+
+    await runStream(userQuestion, displayMessage, activeQuote, false)
+  }
+
+  // User clicks "Yes, search the web"
+  const handleConfirmWebSearch = async () => {
+    if (!pendingWebConfirm) return
+    const { userMessage, userDisplay, quote } = pendingWebConfirm
+    setPendingWebConfirm(null)
+
+    // Remove the confirm bubble (assistant placeholder)
+    setMessages((m) => {
+      const copy = [...m]
+      // Remove last assistant bubble with askWebSearch
+      if (copy[copy.length - 1]?.askWebSearch) copy.pop()
+      // Remove the user message that triggered it too — will be re-added by runStream
+      if (copy[copy.length - 1]?.role === 'user') copy.pop()
+      return copy
+    })
+
+    // Re-run in web mode with confirm flag
+    const prevMode = selectedMode
+    setSelectedMode('web')
+    await runStream(userMessage, userDisplay, quote, true)
+    setSelectedMode(prevMode)
+  }
+
+  // User clicks "No thanks"
+  const handleDeclineWebSearch = async () => {
+    if (!pendingWebConfirm) return
+    const { userMessage } = pendingWebConfirm
+    setPendingWebConfirm(null)
+
+    // Replace the confirm bubble with a "not in KB" message
+    setMessages((m) => {
+      const copy = [...m]
+      if (copy[copy.length - 1]?.askWebSearch) {
+        copy[copy.length - 1] = {
+          role: 'assistant',
+          message: `This topic doesn't appear to be covered in your knowledge base, and I won't search the web.\n\nIf you need current or external information, try switching to **Web** or **Hybrid** mode.`,
+          mode: 'casual',
+        }
+      }
+      return copy
+    })
+
+    // Save the decline message to DB so conversation history is correct
+    try {
+      await savePartialAssistant(
+        sessionId!,
+        `[User declined web search for: "${userMessage}"] This topic doesn't appear to be covered in your knowledge base, and I won't search the web.\n\nIf you need current or external information, try switching to **Web** or **Hybrid** mode.`,
+        'casual', 0, 0, 0,
+      )
+    } catch {/* non-fatal */}
+
+    await refreshConversations()
   }
 
   const handleRunEval = async () => {
@@ -918,7 +1012,7 @@ function App() {
     return (
       <div className={`status-pill ${status.ready ? 'ok' : 'warn'}`}>
         <div className="status-dot" />
-        <span>{status.ready ? `${status.chunk_count.toLocaleString()} chunks` : 'Index missing'}</span>
+        <span>{status.ready ? 'Ready' : 'Index missing'}</span>
         <span className="status-detail">{status.llm_model}</span>
       </div>
     )
@@ -930,12 +1024,12 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={
-        <HomePage 
+        <HomePage
           isFirstLoad={isFirstLoad.current}
           onEnter={() => {
             isFirstLoad.current = false
             navigate('/chat')
-          }} 
+          }}
         />
       } />
       <Route path="/chat" element={
@@ -943,395 +1037,385 @@ function App() {
           {/* ════ Sidebar ════ */}
           <aside className="sidebar">
             <div className="sidebar-header">
-              {/* Brand */}
               <div className="brand" onClick={() => navigate('/')} title="Back to home">
-            <div className="brand-mark">
-              <span className="brand-mark-glyph">✦</span>
-            </div>
-            <div className="brand-text">
-              <h1>Jignasa</h1>
-              <p>PDF RAG Assistant</p>
-            </div>
-          </div>
+                <div className="brand-mark">
+                  <span className="brand-mark-glyph">✦</span>
+                </div>
+                <div className="brand-text">
+                  <h1>Jignasa</h1>
+                  <p>PDF RAG Assistant</p>
+                </div>
+              </div>
 
-          {/* Status pill */}
-          {renderStatus()}
+              {renderStatus()}
 
-          <button id="btn-new-chat" className="btn-new-chat" onClick={handleNewChat}>
-            <Ic.Plus /> New conversation
-          </button>
-          <button
-            className="btn-home"
-            onClick={() => navigate('/')}
-            title="Return to home page"
-          >
-            ← Home
-          </button>
-          <button
-            id="btn-cost-calculator"
-            className="btn-cost-calc"
-            onClick={() => setShowCostModal(true)}
-            disabled={messages.length === 0}
-            title="Check total tokens and cost for this conversation"
-          >
-            🪙 Token cost
-          </button>
-        </div>
-
-        <div className="conv-section">
-          {conversations.length > 0 && (
-            <div className="conv-section-label">History</div>
-          )}
-          {conversations.map((c) => (
-            <div key={c.session_id} className={`conv-item ${c.session_id === sessionId ? 'active' : ''}`}>
-              <button
-                id={`conv-${c.session_id}`}
-                className="conv-item-btn"
-                onClick={() => setSessionId(c.session_id)}
-              >
-                {c.title || 'New Chat'}
+              <button id="btn-new-chat" className="btn-new-chat" onClick={handleNewChat}>
+                <Ic.Plus /> New conversation
               </button>
-              <div className="conv-actions">
-                <button
-                  className="conv-action-btn"
-                  onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
-                  title="Rename"
-                >
-                  <Ic.Rename />
-                </button>
-                <button
-                  className="conv-action-btn danger"
-                  onClick={() => handleDelete(c.session_id)}
-                  title="Delete"
-                >
-                  <Ic.Trash />
-                </button>
-              </div>
+              <button
+                className="btn-home"
+                onClick={() => navigate('/')}
+                title="Return to home page"
+              >
+                ← Home
+              </button>
+              <button
+                id="btn-cost-calculator"
+                className="btn-cost-calc"
+                onClick={() => setShowCostModal(true)}
+                disabled={messages.length === 0}
+                title="Check total tokens and cost for this conversation"
+              >
+                🪙 Token cost
+              </button>
             </div>
-          ))}
-        </div>
 
-        {/* Sidebar legend */}
-        <div className="sidebar-footer">
-          <div className="mode-legend">
-            <div className="legend-title">Answer modes</div>
-            <div className="legend-row"><span className="mode-badge badge-casual"><Ic.Sparkle />Chat</span><span>Casual conversation</span></div>
-            <div className="legend-row"><span className="mode-badge badge-rag"><Ic.Doc />PDF RAG</span><span>Document retrieval</span></div>
-            <div className="legend-row"><span className="mode-badge badge-web"><Ic.Globe />Web</span><span>Live web search</span></div>
-            <div className="legend-row"><span className="mode-badge badge-hybrid"><Ic.Globe />Hybrid</span><span>Combined PDF + Web</span></div>
-          </div>
-        </div>
-      </aside>
-
-      {/* ════ Main ════ */}
-      <div className="main">
-        {/* Tab bar */}
-        <div className="tabs">
-          <button id="tab-chat" className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
-            <Ic.Chat /> Chat
-          </button>
-          <button id="tab-evaluation" className={`tab ${tab === 'evaluation' ? 'active' : ''}`} onClick={() => setTab('evaluation')}>
-            <Ic.Bar /> Evaluation
-          </button>
-        </div>
-
-        {/* Error banner */}
-        {error && (
-          <div className="error-banner" role="alert">
-            <span>⚠</span>
-            <span>{error}</span>
-            <button className="error-banner-dismiss" onClick={() => setError('')}>✕</button>
-          </div>
-        )}
-
-        {/* ════ Chat tab ════ */}
-        {tab === 'chat' && (
-          <div className="chat-panel">
-            {/* Loading overlay */}
-            {loadingApp && (
-              <div className="loading-overlay">
-                <div className="spinner" />
-                <p>{connectError || 'Starting up…'}</p>
-              </div>
-            )}
-            {!loadingApp && !status && connectError && (
-              <div className="loading-overlay">
-                <span style={{ fontSize: '2.5rem' }}>⚡</span>
-                <p style={{ color: 'var(--red)', textAlign: 'center', maxWidth: 320 }}>{connectError}</p>
-              </div>
-            )}
-
-            {/* Chat header */}
-            <div className="chat-header">
-              <div className="chat-title-group">
-                <span className="chat-title">{title}</span>
-                <button
-                  className="chat-rename-btn"
-                  onClick={() => handleRename(sessionId!, title)}
-                  title="Rename Conversation"
-                >
-                  <Ic.Rename />
-                </button>
-              </div>
-              {status && (
-                <span className="chat-meta">
-                  {status.chunk_count.toLocaleString()} chunks · {status.llm_model}
-                </span>
+            <div className="conv-section">
+              {conversations.length > 0 && (
+                <div className="conv-section-label">History</div>
               )}
+              {conversations.map((c) => (
+                <div key={c.session_id} className={`conv-item ${c.session_id === sessionId ? 'active' : ''}`}>
+                  <button
+                    id={`conv-${c.session_id}`}
+                    className="conv-item-btn"
+                    onClick={() => setSessionId(c.session_id)}
+                  >
+                    {c.title || 'New Chat'}
+                  </button>
+                  <div className="conv-actions">
+                    <button
+                      className="conv-action-btn"
+                      onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
+                      title="Rename"
+                    >
+                      <Ic.Rename />
+                    </button>
+                    <button
+                      className="conv-action-btn danger"
+                      onClick={() => handleDelete(c.session_id)}
+                      title="Delete"
+                    >
+                      <Ic.Trash />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Messages */}
-            {messages.length === 0 && !streaming ? (
-              <div className="empty-state">
-                <div className="empty-agent-ring">
-                  <div className="empty-agent-icon">✦</div>
-                </div>
-                <h2>Ask about your documents</h2>
-                <p>
-                  Automatically routes to <strong>PDF RAG</strong>, <strong>web search</strong>, or casual chat.
-                  Query transformation improves retrieval quality.
-                </p>
-                <div className="prompt-chips">
-                  {[
-                    { icon: '👋', text: 'Hello!' },
-                    { icon: '📄', text: 'Summarise the key findings' },
-                    { icon: '🌐', text: 'What happened in AI today?' },
-                    { icon: '🔍', text: 'What does the document say about…' },
-                  ].map((chip) => (
-                    <button
-                      key={chip.text}
-                      className="prompt-chip"
-                      onClick={() => setInput(chip.text)}
-                    >
-                      <span className="chip-icon">{chip.icon}</span>
-                      {chip.text}
-                    </button>
-                  ))}
-                </div>
+            <div className="sidebar-footer">
+              <div className="mode-legend">
+                <div className="legend-title">Answer modes</div>
+                <div className="legend-row"><span className="mode-badge badge-casual"><Ic.Sparkle />Chat</span><span>Casual conversation</span></div>
+                <div className="legend-row"><span className="mode-badge badge-rag"><Ic.Doc />PDF RAG</span><span>Document retrieval</span></div>
+                <div className="legend-row"><span className="mode-badge badge-web"><Ic.Globe />Web</span><span>Live web search</span></div>
+                <div className="legend-row"><span className="mode-badge badge-hybrid"><Ic.Globe />Hybrid</span><span>Combined PDF + Web</span></div>
               </div>
-            ) : (
-              <div className="messages" onMouseUp={handleTextSelection}>
-                {messages.map((m, i) => (
-                  <MessageBubble
-                    key={i}
-                    msg={m}
-                    isLast={i === messages.length - 1}
-                    isStreaming={streaming}
-                    onEdit={handleEditMessage}
-                  />
-                ))}
-                <div ref={messagesEndRef} />
-                
-                {/* Floating Quote Button */}
-                {quoteSelection && (
-                  <button
-                    className="floating-quote-btn"
-                    style={{ top: quoteSelection.top, left: quoteSelection.left }}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={applyQuote}
-                    title="Quote selected text"
-                  >
-                    <Ic.Chat /> Quote
-                  </button>
-                )}
+            </div>
+          </aside>
+
+          {/* ════ Main ════ */}
+          <div className="main">
+            <div className="tabs">
+              <button id="tab-chat" className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
+                <Ic.Chat /> Chat
+              </button>
+              <button id="tab-evaluation" className={`tab ${tab === 'evaluation' ? 'active' : ''}`} onClick={() => setTab('evaluation')}>
+                <Ic.Bar /> Evaluation
+              </button>
+            </div>
+
+            {error && (
+              <div className="error-banner" role="alert">
+                <span>⚠</span>
+                <span>{error}</span>
+                <button className="error-banner-dismiss" onClick={() => setError('')}>✕</button>
               </div>
             )}
 
-            {/* Input */}
-            <div className="chat-input-area">
-              <div className="chat-input-wrap">
-                {/* Mode Selector */}
-                <div className="mode-selector">
-                  {([
-                    ['auto',   'Auto'],
-                    ['docs',   'Knowledge'],
-                    ['web',    'Web'],
-                    ['hybrid', 'Hybrid'],
-                  ] as [ChatMode, string][]).map(([m, label]) => (
-                    <button
-                      key={m}
-                      className={`mode-btn mode-btn-${m} ${selectedMode === m ? 'active' : ''}`}
-                      onClick={() => setSelectedMode(m)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                
-                {/* Quoted Text Preview Box */}
-                {quotedText && (
-                  <div className="quoted-text-preview">
-                    <div className="quoted-text-header">
-                      <Ic.Chat /> Replying to quote
-                      <button className="quote-clear-btn" onClick={() => setQuotedText(null)} title="Remove quote">✕</button>
-                    </div>
-                    <div className="quoted-text-content">{quotedText}</div>
+            {/* ════ Chat tab ════ */}
+            {tab === 'chat' && (
+              <div className="chat-panel">
+                {loadingApp && (
+                  <div className="loading-overlay">
+                    <div className="spinner" />
+                    <p>{connectError || 'Starting up…'}</p>
                   </div>
                 )}
-                
-                <div className="input-box">
-                  <AutoTextarea
-                    value={input}
-                    onChange={setInput}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
-                    }}
-                    placeholder="Ask anything — documents, web, or just chat…"
-                    disabled={!status?.ready && !loadingApp}
-                    maxLength={MAX_CHARS}
-                  />
-                  <button
-                    id="btn-send"
-                    className={`send-btn${streaming ? ' stop-btn' : ''}`}
-                    onClick={streaming ? handleStop : handleSend}
-                    disabled={!streaming && !input.trim()}
-                    title={streaming ? 'Stop generation (keeps partial if long enough)' : 'Send (Enter)'}
-                  >
-                    {streaming
-                      ? <Ic.Stop />
-                      : <Ic.Send />
-                    }
-                  </button>
+                {!loadingApp && !status && connectError && (
+                  <div className="loading-overlay">
+                    <span style={{ fontSize: '2.5rem' }}>⚡</span>
+                    <p style={{ color: 'var(--red)', textAlign: 'center', maxWidth: 320 }}>{connectError}</p>
+                  </div>
+                )}
+
+                <div className="chat-header">
+                  <div className="chat-title-group">
+                    <span className="chat-title">{title}</span>
+                    <button
+                      className="chat-rename-btn"
+                      onClick={() => handleRename(sessionId!, title)}
+                      title="Rename Conversation"
+                    >
+                      <Ic.Rename />
+                    </button>
+                  </div>
+                  {status && (
+                    <span className="chat-meta">{status.llm_model}</span>
+                  )}
                 </div>
-                <div className="input-footer">
-                  <span className="input-hint">Enter to send · Shift+Enter for newline</span>
-                  <span className={`char-count ${input.length > MAX_CHARS * 0.85 ? 'warn' : ''}`}>
-                    {input.length}/{MAX_CHARS}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* ════ Evaluation tab ════ */}
-        {tab === 'evaluation' && (
-          <div className="eval-panel">
-            <h2>Retrieval Evaluation</h2>
-
-            <div className="info-box">
-              <strong>Fast, LLM-free evaluation.</strong> Embeds each test question, searches FAISS top-k,
-              and checks if the expected PDF appears in results. No Ollama call is made — this benchmarks
-              retrieval quality only.
-            </div>
-
-            <div className="eval-controls">
-              <label htmlFor="eval-k">
-                Top-k
-                <input
-                  id="eval-k"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={evalK}
-                  onChange={(e) => setEvalK(Number(e.target.value))}
-                />
-              </label>
-              <button
-                id="btn-run-eval"
-                className="btn btn-primary"
-                onClick={handleRunEval}
-                disabled={evalRunning || !status?.ready}
-              >
-                {evalRunning ? '⏳ Running…' : '▶ Run evaluation'}
-              </button>
-              {evalRunning && evalProgress && (
-                <div className="eval-progress-info">
-                  {evalProgress.current}/{evalProgress.total} · {evalProgress.elapsed_seconds}s
-                </div>
-              )}
-            </div>
-
-            {evalLog.length > 0 && (
-              <div className="progress-log">
-                {evalLog.map((line, i) => (
+                {messages.length === 0 && !streaming ? (
+                  <div className="empty-state">
+                    <div className="empty-agent-ring">
+                      <div className="empty-agent-icon">✦</div>
+                    </div>
+                    <h2>Ask about your documents</h2>
+                    <p>
+                      Automatically routes to <strong>PDF RAG</strong>, <strong>web search</strong>, or casual chat.
+                      Query transformation improves retrieval quality.
+                    </p>
+                    <div className="prompt-chips">
+                      {[
+                        { icon: '👋', text: 'Hello!' },
+                        { icon: '📄', text: 'Summarise the key findings' },
+                        { icon: '🌐', text: 'What happened in AI today?' },
+                        { icon: '🔍', text: 'What does the document say about…' },
+                      ].map((chip) => (
+                        <button
+                          key={chip.text}
+                          className="prompt-chip"
+                          onClick={() => setInput(chip.text)}
+                        >
+                          <span className="chip-icon">{chip.icon}</span>
+                          {chip.text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
                   <div
-                    key={i}
-                    className={`progress-line ${line.includes('✓') ? 'hit' : line.includes('✗') ? 'miss' : ''}`}
+                    className={`messages${activeSelection ? ' has-selection' : ''}`}
+                    onMouseUp={handleTextSelection}
                   >
-                    {line}
+                    {messages.map((m, i) => (
+                      <MessageBubble
+                        key={i}
+                        msg={m}
+                        isLast={i === messages.length - 1}
+                        isStreaming={streaming}
+                        onEdit={handleEditMessage}
+                        onConfirmWeb={handleConfirmWebSearch}
+                        onDeclineWeb={handleDeclineWebSearch}
+                      />
+                    ))}
+                    <div ref={messagesEndRef} />
+
+                    {/* Floating Quote Button */}
+                    {quoteSelection && (
+                      <button
+                        className="floating-quote-btn"
+                        style={{ top: quoteSelection.top, left: quoteSelection.left }}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={applyQuote}
+                        title="Quote selected text"
+                      >
+                        <Ic.Chat /> Quote
+                      </button>
+                    )}
                   </div>
-                ))}
+                )}
+
+                {/* Input */}
+                <div className="chat-input-area">
+                  <div className="chat-input-wrap">
+                    <div className="mode-selector">
+                      {([
+                        ['auto',   'Auto'],
+                        ['docs',   'Knowledge'],
+                        ['web',    'Web'],
+                        ['hybrid', 'Hybrid'],
+                      ] as [ChatMode, string][]).map(([m, label]) => (
+                        <button
+                          key={m}
+                          className={`mode-btn mode-btn-${m} ${selectedMode === m ? 'active' : ''}`}
+                          onClick={() => setSelectedMode(m)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {quotedText && (
+                      <div className="quoted-text-preview">
+                        <div className="quoted-text-header">
+                          <Ic.Chat /> Replying to quote
+                          <button className="quote-clear-btn" onClick={() => setQuotedText(null)} title="Remove quote">✕</button>
+                        </div>
+                        <div className="quoted-text-content">{quotedText}</div>
+                      </div>
+                    )}
+
+                    <div className="input-box">
+                      <AutoTextarea
+                        value={input}
+                        onChange={setInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+                        }}
+                        placeholder="Ask anything — documents, web, or just chat…"
+                        disabled={!status?.ready && !loadingApp}
+                        maxLength={MAX_CHARS}
+                      />
+                      <button
+                        id="btn-send"
+                        className={`send-btn${streaming ? ' stop-btn' : ''}`}
+                        onClick={streaming ? handleStop : handleSend}
+                        disabled={!streaming && !input.trim()}
+                        title={streaming ? 'Stop generation' : 'Send (Enter)'}
+                      >
+                        {streaming ? <Ic.Stop /> : <Ic.Send />}
+                      </button>
+                    </div>
+                    <div className="input-footer">
+                      <span className="input-hint">Enter to send · Shift+Enter for newline</span>
+                      <span className={`char-count ${input.length > MAX_CHARS * 0.85 ? 'warn' : ''}`}>
+                        {input.length}/{MAX_CHARS}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
-            {evalSummary && (
-              <>
-                <div className="metrics-grid">
-                  {([
-                    ['Hit @ k',       `${(evalSummary.hit_at_k * 100).toFixed(1)}%`],
-                    ['MRR @ k',       evalSummary.mrr_at_k.toFixed(3)],
-                    ['Recall @ k',    `${(evalSummary.recall_at_k * 100).toFixed(1)}%`],
-                    ['Precision @ k', evalSummary.precision_at_k.toFixed(3)],
-                    ['nDCG @ k',      evalSummary.ndcg_at_k.toFixed(3)],
-                    ['Time',          `${evalSummary.elapsed_seconds}s`],
-                  ] as [string, string][]).map(([label, value]) => (
-                    <div className="metric-card" key={label}>
-                      <div className="label">{label}</div>
-                      <div className="value">{value}</div>
-                    </div>
-                  ))}
+            {/* ════ Evaluation tab ════ */}
+            {tab === 'evaluation' && (
+              <div className="eval-panel">
+                <h2>Retrieval Evaluation</h2>
+
+                <div className="info-box">
+                  <strong>Fast, LLM-free evaluation.</strong> Embeds each test question, searches FAISS top-k,
+                  and checks if the expected PDF appears in results. No Ollama call is made — this benchmarks
+                  retrieval quality only.
                 </div>
 
-                <p className="eval-meta">
-                  {evalSummary.question_count} questions · k={evalSummary.k} · {evalSummary.evaluated_at} ·{' '}
-                  <em>{evalSummary.eval_type} (LLM: {evalSummary.uses_llm ? 'yes' : 'no'})</em>
-                </p>
-
-                <div className="save-row">
-                  <input
-                    id="save-name-input"
-                    placeholder="Name this snapshot (e.g. v1, baseline)…"
-                    value={saveName}
-                    onChange={(e) => setSaveName(e.target.value)}
-                  />
+                <div className="eval-controls">
+                  <label htmlFor="eval-k">
+                    Top-k
+                    <input
+                      id="eval-k"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={evalK}
+                      onChange={(e) => setEvalK(Number(e.target.value))}
+                    />
+                  </label>
                   <button
-                    id="btn-save-eval"
+                    id="btn-run-eval"
                     className="btn btn-primary"
-                    onClick={handleSaveEval}
-                    disabled={!saveName.trim()}
+                    onClick={handleRunEval}
+                    disabled={evalRunning || !status?.ready}
                   >
-                    Save snapshot
+                    {evalRunning ? '⏳ Running…' : '▶ Run evaluation'}
                   </button>
+                  {evalRunning && evalProgress && (
+                    <div className="eval-progress-info">
+                      {evalProgress.current}/{evalProgress.total} · {evalProgress.elapsed_seconds}s
+                    </div>
+                  )}
                 </div>
-              </>
-            )}
 
-            {saved.length > 0 && (
-              <div className="saved-section">
-                <h3>Saved runs</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th><th>Hit @ k</th><th>MRR @ k</th>
-                      <th>Recall @ k</th><th>Time</th><th>Saved</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...saved].reverse().map((r) => (
-                      <tr key={r.name}>
-                        <td>{r.label || r.name}</td>
-                        <td>{(r.hit_at_k * 100).toFixed(1)}%</td>
-                        <td>{r.mrr_at_k.toFixed(3)}</td>
-                        <td>{(r.recall_at_k * 100).toFixed(1)}%</td>
-                        <td>{r.elapsed_seconds != null ? `${r.elapsed_seconds}s` : '—'}</td>
-                        <td>{r.saved_at}</td>
-                      </tr>
+                {evalLog.length > 0 && (
+                  <div className="progress-log">
+                    {evalLog.map((line, i) => (
+                      <div
+                        key={i}
+                        className={`progress-line ${line.includes('✓') ? 'hit' : line.includes('✗') ? 'miss' : ''}`}
+                      >
+                        {line}
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
+
+                {evalSummary && (
+                  <>
+                    <div className="metrics-grid">
+                      {([
+                        ['Hit @ k',       `${(evalSummary.hit_at_k * 100).toFixed(1)}%`],
+                        ['MRR @ k',       evalSummary.mrr_at_k.toFixed(3)],
+                        ['Recall @ k',    `${(evalSummary.recall_at_k * 100).toFixed(1)}%`],
+                        ['Precision @ k', evalSummary.precision_at_k.toFixed(3)],
+                        ['nDCG @ k',      evalSummary.ndcg_at_k.toFixed(3)],
+                        ['Time',          `${evalSummary.elapsed_seconds}s`],
+                      ] as [string, string][]).map(([label, value]) => (
+                        <div className="metric-card" key={label}>
+                          <div className="label">{label}</div>
+                          <div className="value">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="eval-meta">
+                      {evalSummary.question_count} questions · k={evalSummary.k} · {evalSummary.evaluated_at} ·{' '}
+                      <em>{evalSummary.eval_type} (LLM: {evalSummary.uses_llm ? 'yes' : 'no'})</em>
+                    </p>
+
+                    <div className="save-row">
+                      <input
+                        id="save-name-input"
+                        placeholder="Name this snapshot (e.g. v1, baseline)…"
+                        value={saveName}
+                        onChange={(e) => setSaveName(e.target.value)}
+                      />
+                      <button
+                        id="btn-save-eval"
+                        className="btn btn-primary"
+                        onClick={handleSaveEval}
+                        disabled={!saveName.trim()}
+                      >
+                        Save snapshot
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {saved.length > 0 && (
+                  <div className="saved-section">
+                    <h3>Saved runs</h3>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Name</th><th>Hit @ k</th><th>MRR @ k</th>
+                          <th>Recall @ k</th><th>Time</th><th>Saved</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...saved].reverse().map((r) => (
+                          <tr key={r.name}>
+                            <td>{r.label || r.name}</td>
+                            <td>{(r.hit_at_k * 100).toFixed(1)}%</td>
+                            <td>{r.mrr_at_k.toFixed(3)}</td>
+                            <td>{(r.recall_at_k * 100).toFixed(1)}%</td>
+                            <td>{r.elapsed_seconds != null ? `${r.elapsed_seconds}s` : '—'}</td>
+                            <td>{r.saved_at}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
-      {showCostModal && (
-        <CostCalculatorModal
-          messages={messages}
-          onClose={() => setShowCostModal(false)}
-        />
-      )}
-    </div>
+          {showCostModal && (
+            <CostCalculatorModal
+              messages={messages}
+              onClose={() => setShowCostModal(false)}
+            />
+          )}
+        </div>
       } />
     </Routes>
   )

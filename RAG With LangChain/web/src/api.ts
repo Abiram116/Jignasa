@@ -46,6 +46,7 @@ export type ChatEvent =
   | { type: 'cached'; is_cached: boolean }
   | { type: 'sources'; sources: Source[] }
   | { type: 'web_sources'; sources: WebSource[] }
+  | { type: 'ask_web_search'; message: string }
   | { type: 'token'; content: string }
   | { type: 'done'; content: string; prompt_tokens?: number; completion_tokens?: number; cached?: boolean; latency_ms?: number }
   | { type: 'error'; message: string }
@@ -57,11 +58,17 @@ export async function streamChat(
   onEvent: (event: ChatEvent) => void,
   quotedText?: string | null,
   signal?: AbortSignal,
+  confirmWebSearch?: boolean,
 ): Promise<void> {
   const res = await fetch(`${API}/conversations/${sessionId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, mode, quoted_text: quotedText ?? null }),
+    body: JSON.stringify({
+      message,
+      mode,
+      quoted_text: quotedText ?? null,
+      confirm_web_search: confirmWebSearch ?? false,
+    }),
     signal,
   })
   if (!res.ok) throw new Error(await res.text())

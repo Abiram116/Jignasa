@@ -31,22 +31,20 @@ from api.security import (
 )
 from api.websearch import build_web_prompt, web_search
 
-# ── Allowed origins: extend this list when deploying to production ────────
+# ── Allowed origins ───────────────────────────────────────────────────
 _CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    # "https://your-prod-domain.com",  # ← add prod origin here
 ]
 
-app = FastAPI(title="Jijnasa PDF RAG API")
+app = FastAPI(title="Jignasa PDF RAG API")
 
-# Security headers must be registered BEFORE CORS so they apply everywhere
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],   # explicit — not wildcard
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
@@ -55,6 +53,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     mode: str = Field(default="auto")
     quoted_text: str | None = Field(default=None, max_length=1000)
+    confirm_web_search: bool = Field(default=False)
 
 
 class EvalRequest(BaseModel):
@@ -140,11 +139,6 @@ def get_messages(session_id: str) -> dict:
 
 @app.post("/api/conversations/{session_id}/partial-assistant")
 def save_partial_assistant(session_id: str, body: PartialAssistantRequest) -> dict:
-    """
-    Save a partial (stopped mid-stream) assistant response to the DB.
-    Called by the frontend when the user stops a long response that has
-    enough content to be worth keeping (≥ 4 newlines).
-    """
     validate_session_id(session_id)
     msg = sanitise_text(body.message, max_length=20000)
     db.append_message(
@@ -160,36 +154,108 @@ def save_partial_assistant(session_id: str, body: PartialAssistantRequest) -> di
     return {"ok": True}
 
 
+# ── System prompts ────────────────────────────────────────────────────
+
+CASUAL_SYSTEM = """You are Jignasa, a sharp and helpful AI assistant. You engage naturally in conversation — friendly without being sycophantic.
+
+FORMATTING RULES (follow strictly):
+- Use **bold** for key terms or important concepts
+- Use bullet points (- item) or numbered lists (1. item) when listing things
+- Use `inline code` for technical terms, commands, or variable names
+- Use ```language\\ncode\\n``` fenced blocks for multi-line code
+- Use > blockquotes sparingly, only for highlighting notable points
+- Keep paragraphs short and scannable
+- Do NOT start every response with a greeting or acknowledgment
+- Do NOT add unnecessary padding or filler phrases like "Great question!" or "Certainly!"
+
+RESPONSE STYLE:
+- For factual questions: be direct, accurate, and cite reasoning when needed
+- For how-to questions: use numbered steps
+- For explanations: lead with the core idea, then elaborate
+- For math/logic: show your working clearly
+- For opinions or subjective topics: be honest and balanced
+- Keep responses concise unless depth is explicitly needed"""
+
+RAG_SYSTEM = """You are Jignasa, a precise document assistant that answers questions from the provided document context.
+
+CORE RULES:
+- Answer ONLY from the context provided below
+- If the answer is not in the context, say exactly: "I don't have enough information in the documents to answer that."
+- Never hallucinate facts, statistics, or quotes not present in the context
+- Cite sources naturally when referencing specific documents
+
+FORMATTING RULES:
+- Use **bold** for key terms and important concepts
+- Use bullet points (- item) for lists of information
+- Use numbered lists (1. item) for steps or sequences
+- Use ```language\\ncode\\n``` fenced blocks for code or commands
+- Use `inline code` for technical terms
+- Use > blockquotes when directly quoting from the document
+- Structure long answers with clear sections — don't write walls of text
+- Be thorough but don't pad responses with irrelevant content"""
+
+WEB_SYSTEM = """You are Jignasa, an AI assistant with access to live web search results. Answer the user's question using the search results provided.
+
+CORE RULES:
+- Use search results as your primary source — cite them as [1], [2] etc. inline
+- Synthesize information across sources rather than just repeating one
+- Acknowledge when sources conflict or are unclear
+- Be factual and accurate — do not add information not in the results
+
+FORMATTING RULES:
+- Use **bold** for key facts and important terms
+- Use bullet points (- item) for lists
+- Use numbered lists (1. item) for steps or ranked items
+- Use ```language\\ncode\\n``` fenced blocks for code
+- Use `inline code` for commands and technical terms
+- Structure responses clearly — lead with the direct answer, then elaborate
+- Keep it scannable — break up long answers into clear sections"""
+
+HYBRID_SYSTEM = """You are Jignasa, a hybrid assistant that synthesizes answers from both local documents and live web search results.
+
+CORE RULES:
+- Cite document sources as [doc: filename p.N] and web sources as [web: N]
+- Prioritize document context for domain-specific questions; web for current/live information
+- Acknowledge when sources complement or contradict each other
+- Never hallucinate — only use what's in the provided context
+
+FORMATTING RULES:
+- Use **bold** for key points and important terms
+- Use bullet points (- item) for lists
+- Use numbered lists (1. item) for steps
+- Use ```language\\ncode\\n``` fenced blocks for code
+- Structure with clear sections for complex answers
+- Lead with the most important information"""
+
+NO_KB_SYSTEM = """You are Jignasa, a document assistant. The user asked a question but nothing relevant was found in the knowledge base, and they've chosen not to search the web.
+
+Respond honestly: acknowledge that this topic isn't covered in your documents and isn't something you can look up right now. Be brief and direct. You can offer general knowledge if you're confident about it, but clearly mark it as general knowledge (not from their documents). Suggest they switch to Web mode if they need current or external information."""
+
+
 @app.post("/api/conversations/{session_id}/chat")
 def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
-    # ── Validate session ID format ───────────────────────────────────
     validate_session_id(session_id)
 
-    # ── Sanitise inputs ─────────────────────────────────────────────
     body.message = sanitise_text(body.message, max_length=2000)
     if body.quoted_text:
         body.quoted_text = sanitise_text(body.quoted_text, max_length=1000)
 
-    # ── Guardrails (length + blocked patterns) ───────────────────────
     try:
         run_guardrails(body.message)
         if body.quoted_text:
             run_guardrails(body.quoted_text)
-        # Structural prompt-injection check
         check_prompt_injection(body.message)
         if body.quoted_text:
             check_prompt_injection(body.quoted_text)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    # ── Intent / Mode classification ─────────────────────────────────
     mode_requested = body.mode.lower().strip()
     if mode_requested not in ["auto", "docs", "web", "hybrid"]:
         mode_requested = "auto"
 
     intent = mode_requested
     if mode_requested == "auto":
-        # Use Ollama tool-calling for smarter routing; falls back to heuristic
         intent = classify_intent_llm(body.message)
         if intent == "casual":
             resolved_mode = "casual"
@@ -202,8 +268,6 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         if resolved_mode == "docs":
             intent = "rag"
         elif resolved_mode == "web":
-            # Even in explicit web mode, detect casual messages (hi, hello, etc.)
-            # to avoid pointlessly searching the web for greetings.
             heuristic = classify_intent(body.message)
             if heuristic == "casual":
                 resolved_mode = "casual"
@@ -213,7 +277,6 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         elif resolved_mode == "hybrid":
             intent = "hybrid"
 
-    # Downgrade RAG/Hybrid if index is not ready
     if resolved_mode in ["docs", "hybrid"] and not rag.index_ready():
         if resolved_mode == "docs":
             resolved_mode = "casual"
@@ -222,13 +285,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             resolved_mode = "web"
             intent = "web"
 
-    # ── Build quote context block ────────────────────────────────────
     def _quote_block(quoted: str | None) -> str:
-        """
-        Return a structured instruction block when the user has quoted part of
-        a previous assistant response.  The LLM receives this before the main
-        question so it knows exactly which excerpt the user is referring to.
-        """
         if not quoted or not quoted.strip():
             return ""
         return (
@@ -240,16 +297,12 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
     quote_ctx = _quote_block(body.quoted_text)
 
-    # ── Snapshot history BEFORE writing the new user message ──────
     prior_history = db.load_messages(session_id)
 
-    # ── Title auto-set on first message ────────────────────────────
     if not prior_history:
         words = body.message.strip().split()[:6]
         db.set_title(session_id, " ".join(words).title() if words else "New Chat")
 
-    # Store the display form so the conversation renders correctly when reloaded.
-    # If the user quoted text, prepend it as a blockquote so it's visible in history.
     display_message = (
         f"> {body.quoted_text.strip()}\n\n{body.message}"
         if body.quoted_text and body.quoted_text.strip()
@@ -257,14 +310,12 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
     )
     db.append_message(session_id, "user", display_message)
 
-    # ── Build event stream ──────────────────────────────────────────
     def event_stream() -> Iterator[str]:
         stream_start = time.monotonic()
 
-        # Always tell the frontend which mode we're in
         yield _sse({"type": "intent", "mode": intent})
 
-        # ── Check Cache (skip for casual) ───────────────────────────
+        # ── Cache check ─────────────────────────────────────────────
         if resolved_mode != "casual":
             cached = get_cached(body.message, resolved_mode)
             if cached is not None:
@@ -274,47 +325,30 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                     yield _sse({"type": "sources", "sources": cached["sources"]})
                 if cached.get("web_sources"):
                     yield _sse({"type": "web_sources", "sources": cached["web_sources"]})
-
-                # Stream cached content chunk by chunk with delay
                 res_text = cached["response"]
                 chunk_sz = 15
                 for idx in range(0, len(res_text), chunk_sz):
                     yield _sse({"type": "token", "content": res_text[idx:idx+chunk_sz]})
                     time.sleep(0.005)
-
                 db.append_message(
-                    session_id,
-                    "assistant",
-                    res_text,
+                    session_id, "assistant", res_text,
                     prompt_tokens=cached["prompt_tokens"],
                     completion_tokens=cached["completion_tokens"],
-                    mode=intent,
-                    sources=cached["sources"],
-                    web_sources=cached["web_sources"],
-                    cached=True,
-                    latency_ms=latency_ms,
+                    mode=intent, sources=cached["sources"],
+                    web_sources=cached["web_sources"], cached=True, latency_ms=latency_ms,
                 )
                 yield _sse({
-                    "type": "done",
-                    "content": res_text,
+                    "type": "done", "content": res_text,
                     "prompt_tokens": cached["prompt_tokens"],
                     "completion_tokens": cached["completion_tokens"],
-                    "cached": True,
-                    "latency_ms": latency_ms,
+                    "cached": True, "latency_ms": latency_ms,
                 })
                 return
 
-        # ── CASUAL: direct conversation, no retrieval ───────────────
+        # ── CASUAL ──────────────────────────────────────────────────
         if resolved_mode == "casual":
-            casual_system = (
-                "You are Jijnasa, a friendly and helpful AI assistant. "
-                "Format your responses using Markdown: use **bold** for emphasis, "
-                "`inline code` for code snippets, ```language\ncode\n``` fenced blocks for "
-                "multi-line code or commands, bullet points (- item) for lists, and "
-                "numbered lists (1. item) for steps. Keep answers concise but well-structured."
-            )
-            ollama_messages: list[dict] = [{"role": "system", "content": casual_system}]
-            for m in prior_history[-8:]:   # last 4 turns
+            ollama_messages: list[dict] = [{"role": "system", "content": CASUAL_SYSTEM}]
+            for m in prior_history[-8:]:
                 ollama_messages.append({"role": m["role"], "content": m["message"]})
             ollama_messages.append({"role": "user", "content": f"{quote_ctx}{body.message}".strip()})
 
@@ -323,11 +357,9 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             completion_tokens = 0
             try:
                 for chunk in chat(
-                    model=OLLAMA_MODEL,
-                    messages=ollama_messages,
-                    stream=True,
-                    think=False,
-                    options={"temperature": 0.7, "num_predict": 400},
+                    model=OLLAMA_MODEL, messages=ollama_messages,
+                    stream=True, think=False,
+                    options={"temperature": 0.7, "num_predict": 600},
                 ):
                     if chunk.message.content:
                         answer_parts.append(chunk.message.content)
@@ -347,45 +379,30 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 mode="casual", cached=False, latency_ms=latency_ms,
             )
             yield _sse({
-                "type": "done",
-                "content": answer,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "cached": False,
-                "latency_ms": latency_ms,
+                "type": "done", "content": answer,
+                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                "cached": False, "latency_ms": latency_ms,
             })
 
-        # ── WEB: DuckDuckGo search → Qwen ─────────────────────────
+        # ── WEB ─────────────────────────────────────────────────────
         elif resolved_mode == "web":
             results = web_search(body.message, n=WEB_SEARCH_RESULT_COUNT)
             yield _sse({"type": "web_sources", "sources": results})
 
-            web_system = (
-                "You are Jijnasa, an AI assistant with access to live web search results. "
-                "Answer questions using the search results provided. "
-                "Format responses with Markdown: use **bold** for key points, bullet points "
-                "(- item) for lists, numbered lists (1. item) for steps, "
-                "```language\ncode\n``` fenced blocks for any code or commands, "
-                "and `inline code` for technical terms. "
-                "Cite sources by number [1], [2] etc. when relevant. "
-                "Be thorough — the user asked for web results specifically."
-            )
             web_user_prompt = build_web_prompt(body.message, results, [])
-            ollama_messages_web: list[dict] = [{"role": "system", "content": web_system}]
+            ollama_messages_web: list[dict] = [{"role": "system", "content": WEB_SYSTEM}]
             for m in prior_history[-6:]:
                 ollama_messages_web.append({"role": m["role"], "content": m["message"]})
             ollama_messages_web.append({"role": "user", "content": f"{quote_ctx}{web_user_prompt}".strip()})
 
-            answer_parts: list[str] = []
+            answer_parts = []
             prompt_tokens = 0
             completion_tokens = 0
             try:
                 for chunk in chat(
-                    model=OLLAMA_MODEL,
-                    messages=ollama_messages_web,
-                    stream=True,
-                    think=False,
-                    options={"temperature": 0.3, "num_predict": 700},
+                    model=OLLAMA_MODEL, messages=ollama_messages_web,
+                    stream=True, think=False,
+                    options={"temperature": 0.3, "num_predict": 900},
                 ):
                     if chunk.message.content:
                         answer_parts.append(chunk.message.content)
@@ -406,15 +423,12 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             )
             set_cached(body.message, "web", "web", answer, [], results, prompt_tokens, completion_tokens)
             yield _sse({
-                "type": "done",
-                "content": answer,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "cached": False,
-                "latency_ms": latency_ms,
+                "type": "done", "content": answer,
+                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                "cached": False, "latency_ms": latency_ms,
             })
 
-        # ── RAG: query transform → FAISS → Qwen ────────────────────
+        # ── RAG ─────────────────────────────────────────────────────
         elif resolved_mode == "docs":
             try:
                 hits, _transformed = search_with_transform(body.message)
@@ -422,34 +436,35 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 yield _sse({"type": "error", "message": str(exc)})
                 return
 
+            # ── Auto mode: ask before web searching if KB miss ──────
+            # If we're in auto mode and RAG found nothing useful, signal
+            # the frontend to ask the user if they want a web search.
+            if mode_requested == "auto" and not body.confirm_web_search:
+                # "No useful hits" = fewer than 2 chunks with score > 0.3
+                useful = [h for h in hits if h.get("score", 0) > 0.3]
+                if len(useful) < 2:
+                    yield _sse({"type": "ask_web_search", "message": (
+                        "I couldn't find relevant information in your documents for this query. "
+                        "Would you like me to search the web instead?"
+                    )})
+                    return
+
             yield _sse({"type": "sources", "sources": hits})
 
-            rag_system = (
-                "You are Jijnasa, a precise document assistant. "
-                "Answer questions using ONLY the context provided. "
-                "Format responses with Markdown: use **bold** for key terms, "
-                "bullet points (- item) for lists, numbered lists (1. item) for steps, "
-                "```language\ncode\n``` fenced blocks for any code or commands, "
-                "`inline code` for technical terms, and > blockquotes for direct quotes from documents. "
-                "If the answer is not in the context, say exactly: "
-                "\"I don't have enough information in the documents to answer that.\""
-            )
             rag_user_prompt = build_prompt(body.message, hits, [])
-            ollama_messages_rag: list[dict] = [{"role": "system", "content": rag_system}]
+            ollama_messages_rag: list[dict] = [{"role": "system", "content": RAG_SYSTEM}]
             for m in prior_history[-6:]:
                 ollama_messages_rag.append({"role": m["role"], "content": m["message"]})
             ollama_messages_rag.append({"role": "user", "content": f"{quote_ctx}{rag_user_prompt}".strip()})
 
-            answer_parts: list[str] = []
+            answer_parts = []
             prompt_tokens = 0
             completion_tokens = 0
             try:
                 for chunk in chat(
-                    model=OLLAMA_MODEL,
-                    messages=ollama_messages_rag,
-                    stream=True,
-                    think=False,
-                    options={"temperature": 0.2, "num_predict": 900},
+                    model=OLLAMA_MODEL, messages=ollama_messages_rag,
+                    stream=True, think=False,
+                    options={"temperature": 0.2, "num_predict": 1000},
                 ):
                     if chunk.message.content:
                         answer_parts.append(chunk.message.content)
@@ -470,15 +485,12 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             )
             set_cached(body.message, "docs", "rag", answer, hits, [], prompt_tokens, completion_tokens)
             yield _sse({
-                "type": "done",
-                "content": answer,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "cached": False,
-                "latency_ms": latency_ms,
+                "type": "done", "content": answer,
+                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                "cached": False, "latency_ms": latency_ms,
             })
 
-        # ── HYBRID: RAG + Web combined ──────────────────────────────
+        # ── HYBRID ──────────────────────────────────────────────────
         elif resolved_mode == "hybrid":
             import concurrent.futures
 
@@ -503,15 +515,6 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             yield _sse({"type": "sources", "sources": hits})
             yield _sse({"type": "web_sources", "sources": results})
 
-            hybrid_system = (
-                "You are Jijnasa, a hybrid assistant with access to both local document context and live web search results. "
-                "Answer questions by synthesizing information from both the document context and web search results provided. "
-                "Format responses with Markdown: use **bold** for key points, bullet points (- item) for lists, "
-                "numbered lists (1. item) for steps, ```language\ncode\n``` fenced blocks for code, and `inline code` for technical terms. "
-                "Cite document sources as [source_name p.X] (e.g. [AI Engineering.pdf p.12]) and web sources as [Web X] (e.g. [Web 1]) when using their information. "
-                "Be factual, thorough, and structure your response clearly."
-            )
-
             doc_snippets = []
             for h in hits:
                 doc_snippets.append(f"[{h['source']} p.{h.get('page_number')}] {h['text']}")
@@ -519,7 +522,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
             web_snippets = []
             for i, r in enumerate(results, start=1):
-                web_snippets.append(f"[Web {i}] {r['title']}\nURL: {r['url']}\n{r['snippet']}")
+                web_snippets.append(f"[web: {i}] {r['title']}\nURL: {r['url']}\n{r['snippet']}")
             web_context = "\n\n".join(web_snippets) or "No web search results were found."
 
             hybrid_user_prompt = f"""Synthesize information from both the document context and web search results below to answer the question.
@@ -534,21 +537,19 @@ Question: {body.message}
 
 Answer:"""
 
-            ollama_messages_hybrid = [{"role": "system", "content": hybrid_system}]
+            ollama_messages_hybrid = [{"role": "system", "content": HYBRID_SYSTEM}]
             for m in prior_history[-6:]:
                 ollama_messages_hybrid.append({"role": m["role"], "content": m["message"]})
             ollama_messages_hybrid.append({"role": "user", "content": f"{quote_ctx}{hybrid_user_prompt}".strip()})
 
-            answer_parts: list[str] = []
+            answer_parts = []
             prompt_tokens = 0
             completion_tokens = 0
             try:
                 for chunk in chat(
-                    model=OLLAMA_MODEL,
-                    messages=ollama_messages_hybrid,
-                    stream=True,
-                    think=False,
-                    options={"temperature": 0.3, "num_predict": 1000},
+                    model=OLLAMA_MODEL, messages=ollama_messages_hybrid,
+                    stream=True, think=False,
+                    options={"temperature": 0.3, "num_predict": 1200},
                 ):
                     if chunk.message.content:
                         answer_parts.append(chunk.message.content)
@@ -565,23 +566,19 @@ Answer:"""
             db.append_message(
                 session_id, "assistant", answer,
                 prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="hybrid", sources=hits, web_sources=results, cached=False,
-                latency_ms=latency_ms,
+                mode="hybrid", sources=hits, web_sources=results, cached=False, latency_ms=latency_ms,
             )
             set_cached(body.message, "hybrid", "hybrid", answer, hits, results, prompt_tokens, completion_tokens)
             yield _sse({
-                "type": "done",
-                "content": answer,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "cached": False,
-                "latency_ms": latency_ms,
+                "type": "done", "content": answer,
+                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                "cached": False, "latency_ms": latency_ms,
             })
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ── Evaluation endpoints (unchanged) ──────────────────────────────────
+# ── Evaluation endpoints ───────────────────────────────────────────────
 
 @app.post("/api/evaluation/run")
 def run_eval(body: EvalRequest) -> StreamingResponse:

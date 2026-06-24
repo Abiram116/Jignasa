@@ -28,6 +28,8 @@ export interface Message {
   webSources?: WebSource[]
   cached?: boolean
   latency_ms?: number
+  /** Set when backend asks user whether to do a web search */
+  askWebSearch?: string
 }
 
 export interface Source {

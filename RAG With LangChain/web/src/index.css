@@ -954,10 +954,21 @@ img, svg { display: block; }
   color: var(--text-1);
 }
 
-/* Preserve selection highlight in assistant bubbles — use theme colour */
-.bubble.assistant ::selection {
-  background: rgba(99,102,241,0.38);
+/* ── Selection highlight — persists while quote button is visible ── */
+/* Use a distinctive theme-matching violet instead of default browser blue */
+::selection {
+  background: rgba(99,102,241,0.28);
   color: var(--text-1);
+}
+
+.bubble.assistant ::selection {
+  background: rgba(139, 92, 246, 0.35);
+  color: var(--text-1);
+}
+
+/* When a selection is active (has-selection class on messages), keep highlight */
+.messages.has-selection .bubble.assistant *::selection {
+  background: rgba(139, 92, 246, 0.42);
 }
 
 .bubble.assistant {
@@ -968,19 +979,17 @@ img, svg { display: block; }
   width: 100%;
 }
 
-
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
 
-/* Plain-text view during streaming — no markdown flicker */
-.streaming-plain {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.7;
-  font-size: 1rem;
-  color: var(--text-1);
+/* Live markdown during streaming — suppress flicker by letting React MD render */
+.md-streaming {
+  position: relative;
+}
+.md-streaming > div > *:last-child {
+  display: inline;
 }
 
-/* Blinking cursor appended to streaming content */
+/* Blinking cursor after streaming content */
 .stream-cursor {
   display: inline-block;
   width: 2px;
@@ -1068,34 +1077,104 @@ img, svg { display: block; }
 }
 
 .floating-quote-btn {
-  /* Fixed to the viewport so scroll position never affects placement */
   position: fixed;
   transform: translateX(-50%);
-  background: var(--surface);
-  border: 1px solid var(--indigo-rim);
-  color: var(--text-1);
-  padding: 0.35rem 0.7rem;
+  /* Solid background — no glass/transparency */
+  background: var(--indigo-600, #4f46e5);
+  border: 1px solid var(--indigo-400, #818cf8);
+  color: #fff;
+  padding: 0.38rem 0.8rem;
   border-radius: var(--r-sm);
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.25);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.4);
   cursor: pointer;
   z-index: 9999;
-  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
   animation: slide-up 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
   white-space: nowrap;
   user-select: none;
 }
 .floating-quote-btn:hover {
-  /* Solid background — no transparency bleed-through */
-  background: #1e2640;
-  border-color: var(--indigo-400);
-  color: var(--indigo-200);
-  box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(99,102,241,0.4);
+  background: var(--indigo-500, #6366f1);
+  border-color: var(--indigo-300, #a5b4fc);
+  transform: translateX(-50%) translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(99,102,241,0.5);
+}
+
+/* ── Web Search Confirmation ── */
+.web-search-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  background: rgba(99,102,241,0.06);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: var(--r-md);
+  animation: thinking-fade-in 0.3s var(--ease);
+}
+
+.web-search-confirm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(99,102,241,0.15);
+  color: var(--indigo-400);
+  flex-shrink: 0;
+}
+
+.web-search-confirm-msg {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.web-search-confirm-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.web-confirm-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border-radius: var(--r-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+  border: 1px solid transparent;
+}
+
+.web-confirm-btn.yes {
+  background: var(--indigo-600, #4f46e5);
+  color: #fff;
+  border-color: var(--indigo-400, #818cf8);
+}
+.web-confirm-btn.yes:hover {
+  background: var(--indigo-500, #6366f1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99,102,241,0.35);
+}
+
+.web-confirm-btn.no {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-3);
+  border-color: var(--border-1);
+}
+.web-confirm-btn.no:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-2);
 }
 
 /* ── Sources ── */
@@ -2737,3 +2816,197 @@ tr:last-child td { border-bottom: none; }
   100% { transform: translateX(-9%)  scaleY(0.9)  rotate(-1.8deg); opacity: 1;   }
 }
 
+
+/* ── Responsive: tablet & mobile ──────────────────────────────────── */
+@media (max-width: 900px) {
+  .app {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-1);
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
+  }
+
+  .brand { flex: 1; }
+
+  .btn-new-chat, .btn-home, .btn-cost-calc {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.72rem;
+  }
+
+  .conv-section {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.35rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .conv-item {
+    flex-shrink: 0;
+    max-width: 160px;
+  }
+
+  .sidebar-footer { display: none; }
+
+  .main { min-height: 0; flex: 1; }
+
+  .chat-panel {
+    height: calc(100vh - 200px);
+  }
+}
+
+@media (max-width: 600px) {
+  .bubble-row {
+    gap: 0.5rem;
+  }
+
+  .avatar {
+    width: 26px;
+    height: 26px;
+    font-size: 0.7rem;
+  }
+
+  .bubble.user {
+    max-width: 90%;
+  }
+
+  .mode-selector {
+    gap: 0.25rem;
+  }
+
+  .mode-btn {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.7rem;
+  }
+
+  .prompt-chips {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .web-search-confirm-actions {
+    flex-direction: column;
+  }
+
+  .web-confirm-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .chat-header {
+    padding: 0.5rem 0.75rem;
+  }
+  .chat-title {
+    font-size: 0.85rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Web-search confirmation bubble
+═══════════════════════════════════════════════════════════════════ */
+.web-search-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+}
+
+.web-search-confirm-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--indigo-400);
+}
+
+.web-search-confirm-msg {
+  font-size: 0.9rem;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.web-search-confirm-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.web-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--r-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
+  border: none;
+}
+
+.web-confirm-btn.yes {
+  background: linear-gradient(135deg, var(--indigo-700), var(--indigo-500));
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+}
+.web-confirm-btn.yes:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99,102,241,0.45);
+}
+
+.web-confirm-btn.no {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-2);
+  border: 1px solid var(--border-2);
+}
+.web-confirm-btn.no:hover {
+  background: rgba(255,255,255,0.09);
+  color: var(--text-1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Streaming markdown — isStreaming=true wrapper
+═══════════════════════════════════════════════════════════════════ */
+.md-streaming { /* just a hook; stream-cursor is the visible element */ }
+
+/* Clickable citation links rendered by ReactMarkdown <a> component */
+.md-link {
+  color: var(--indigo-300);
+  text-decoration: underline;
+  text-decoration-color: rgba(99,102,241,0.4);
+  text-underline-offset: 2px;
+  transition: color var(--t-fast), text-decoration-color var(--t-fast);
+}
+.md-link:hover {
+  color: var(--indigo-200);
+  text-decoration-color: var(--indigo-400);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Persistent selection highlight (violet theme, held while quote btn visible)
+═══════════════════════════════════════════════════════════════════ */
+.bubble.assistant ::selection,
+.messages.has-selection .bubble.assistant ::selection {
+  background: rgba(139,92,246,0.35);
+  color: var(--text-1);
+}
