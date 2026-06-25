@@ -8,7 +8,7 @@ dependencies = [
     "docling>=2.96.1",
     "faiss-cpu>=1.14.2",
     "langchain>=0.3.0",
-    "langchain-community>=0.3.0",
+    "langchain-community>=0.3,<0.4",
     "langchain-huggingface>=0.1.2",
     "langchain-text-splitters>=0.3.0",
     "numpy>=2.4.6",
@@ -21,4 +21,6 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "duckduckgo-search>=6.0",
     "ddgs>=9.14.4",
+    "ragas>=0.4.3",
+    "langchain-ollama>=1.1.0",
 ]

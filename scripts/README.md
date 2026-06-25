@@ -13,7 +13,9 @@ and PDFs. The distinction:
 |---|---|
 | `evaluate_rag_metrics.py` | Computes retrieval metrics (Hit@k, MRR, nDCG) against `data/evaluation_set.json`. Called live from the API's Evaluation tab in the UI. |
 | `generate_evaluation_set.py` | One-off generator that produced `data/evaluation_set.json` (asks Ollama to write questions per-PDF, no ground-truth answers — checks "did we retrieve the right PDF", not answer quality). Re-run only if you want to regenerate that specific eval set from scratch. |
+| `evaluate_ragas.py` | Runs the full pipeline (retrieve + generate) for every question in `data/evaluation_set_v2.json` and scores the actual answers with RAGAS: `faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`. This is the **generation-quality** check the other two scripts don't do. Uses the project's own local `qwen3:8b` as the judge LLM (see the script's docstring for why that makes absolute scores directional, not a universal benchmark). Slow — roughly 1-2 minutes per question since each metric is itself one or more LLM calls. |
 
-If you're looking for the **newer** eval set with ground-truth answers (for
-RAGAS-style generation-quality checks), that's `pipeline/04_generate_eval_set.py`
-producing `data/evaluation_set_v2.json` — see `data/README.md`.
+Run `evaluate_ragas.py` with `--limit N` to sanity-check on a few questions
+before committing to a full run. Results land in `data/evaluations/` as a
+per-question CSV plus a `*_summary.json` — see `data/evaluations/README.md`
+for how to read them.

@@ -73,8 +73,13 @@ rag_index/*
 # Local PDFs (add your own; too large for GitHub)
 knowledge-base/*.pdf
 
-# Evaluation run outputs (saved snapshots from the UI)
-data/evaluations/
+# Evaluation run outputs (ad-hoc snapshots from the UI/CLI are noise;
+# the canonical benchmark results below are kept and committed)
+data/evaluations/*
+!data/evaluations/README.md
+!data/evaluations/v2_post_rebuild.csv
+!data/evaluations/ragas_v1.csv
+!data/evaluations/ragas_v1_summary.json
 
 # --- Logs ---
 *.log
