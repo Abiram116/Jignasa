@@ -66,28 +66,15 @@ desktop.ini
 *.faiss
 *.sqlite3
 
-# RAG With LangChain — built by notebook (keep folder via .gitkeep)
-RAG With LangChain/rag_index/*
-!RAG With LangChain/rag_index/.gitkeep
+# Generated RAG index (rebuild via pipeline/, keep folder via .gitkeep)
+rag_index/*
+!rag_index/.gitkeep
 
-# RAG With LangChain — local PDFs (add your own; too large for GitHub)
-RAG With LangChain/knowledge-base/*.pdf
+# Local PDFs (add your own; too large for GitHub)
+knowledge-base/*.pdf
 
-# RAG With LangChain — evaluation run outputs (v1, v2, CSVs)
-RAG With LangChain/data/evaluations/
-
-# RAG With LangChain — legacy / ad-hoc output folders
-RAG With LangChain/Parsed-markdown/
-RAG With LangChain/Chunks/
-RAG With LangChain/Embeddings-data/
-RAG With LangChain/vectorstore/
-
-# RAG Without Frameworks — generated data
-RAG Without Frameworks/data/chunks/
-RAG Without Frameworks/data/embeddings/
-RAG Without Frameworks/Chunks/
-RAG Without Frameworks/Embeddings-data/
-RAG Without Frameworks/knowledge-base/*.pdf
+# Evaluation run outputs (saved snapshots from the UI)
+data/evaluations/
 
 # --- Logs ---
 *.log
@@ -97,17 +84,20 @@ logs/
 .streamlit/secrets.toml
 
 # --- React web app ---
-RAG With LangChain/web/node_modules/
-RAG With LangChain/web/dist/
-RAG With LangChain/web/.eslintcache
-RAG With LangChain/web/*.log
-RAG With LangChain/web/npm-debug.log*
-RAG With LangChain/web/yarn-debug.log*
-RAG With LangChain/web/yarn-error.log*
-RAG With LangChain/web/pnpm-debug.log*
+web/node_modules/
+web/dist/
+web/.eslintcache
+web/*.log
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/pnpm-debug.log*
 
 # --- Windows / WSL artifacts ---
 *:Zone.Identifier
 
 # --- Temporary Test Folders ---
 test UI/
+
+# --- Agent skills (fetched content; skills-lock.json is the source of truth) ---
+.agents/
