@@ -1,0 +1,10 @@
+{
+  "question_count": 32,
+  "faithfulness": 0.7858,
+  "answer_relevancy": 0.8867,
+  "context_precision": 0.8471,
+  "context_recall": 0.8438,
+  "judge_llm": "qwen3:8b",
+  "embedding_model": "BAAI/bge-base-en-v1.5",
+  "evaluated_at": "2026-06-25T10:00:15+00:00"
+}
