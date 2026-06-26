@@ -201,8 +201,9 @@ const TextPressure: React.FC<TextPressureProps> = ({
         ref={titleRef}
         className={`text-pressure-title ${className} ${stroke ? 'stroke' : ''}`}
         style={{
-          display: flex ? 'flex' : 'block',
-          justifyContent: flex ? 'space-between' : 'initial',
+          display: 'flex',
+          justifyContent: flex ? 'space-between' : 'center',
+          gap: flex ? '0' : '0.1em',
           fontFamily,
           fontSize: fontSize,
           lineHeight,
