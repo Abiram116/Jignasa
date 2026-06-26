@@ -8,7 +8,7 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage onEnter={() => navigate('/chat')} />} />
+      <Route path="/" element={<HomePage onEnter={() => navigate('/chat')} triggerHeroAnimations={true} />} />
       <Route path="/chat" element={<ChatInterface onBack={() => navigate('/')} />} />
     </Routes>
   )
