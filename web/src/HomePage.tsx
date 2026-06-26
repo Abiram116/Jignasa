@@ -6,6 +6,7 @@ import ScrollFloat from './ScrollFloat'
 import { MagicBentoGlow } from './MagicBentoGlow'
 import { SmoothScroll } from './SmoothScroll'
 import { StaggerReveal } from './ScrollReveal'
+import TextPressure from './TextPressure'
 import { StickyPipeline } from './StickyPipeline'
 import { EvalResultsSection } from './EvalResultsSection'
 
@@ -337,37 +338,47 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       <EvalResultsSection onLoaded={onEvalLoaded} />
 
       {/* ── Agent manifesto ── */}
-      <section className="manifesto-section">
+      <section className="manifesto-section" style={{ padding: 0 }}>
         <motion.div 
           className="manifesto-box"
-          initial={{ opacity: 0, scale: 0.9, y: 40, filter: 'blur(8px)' }}
-          whileInView={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
-          viewport={{ once: true, amount: 0.4 }}
+          style={{ width: '100%', maxWidth: 'none', background: 'transparent', border: 'none', padding: '0 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4rem' }}
+          initial={{ opacity: 0, scale: 0.95, filter: 'blur(8px)' }}
+          whileInView={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          viewport={{ once: true, amount: 0.2 }}
           transition={{ type: 'spring', bounce: 0, duration: 1.5 }}
         >
-          <div className="manifesto-glow-bg" />
-          <div className="manifesto-sparkle">✦</div>
-          <p className="manifesto-devanagari">जिज्ञासा</p>
-          <p className="manifesto-gloss">the desire to know, to seek, to understand deeply</p>
-          <p className="manifesto-body">
-            Jignasa isn't a chatbot. It's an agent that actively retrieves, synthesises,
-            and reasons, not just autocompletes. Every response is grounded in real
-            sources: your PDFs, the live web, or both at once.
-          </p>
-          <button className="btn-cta-primary manifesto-cta" onClick={onEnter}>
-            Begin seeking →
-          </button>
+          <div style={{ position: 'relative', width: '100%', height: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <TextPressure
+              text="जिज्ञासा"
+              flex
+              alpha={false}
+              stroke={false}
+              width={true}
+              weight={true}
+              italic={true}
+              textColor="#ffffff"
+              strokeColor="#5227FF"
+              minFontSize={60}
+            />
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem', maxWidth: '800px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', fontFamily: 'Outfit, sans-serif', fontWeight: 300, color: 'var(--text-2)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              the desire to know, to seek, to understand deeply
+            </h2>
+            
+            <p style={{ fontSize: 'clamp(1.25rem, 2vw, 1.75rem)', color: 'var(--text-3)', lineHeight: 1.6, fontWeight: 300 }}>
+              Jignasa isn't a chatbot. It's an agent that actively retrieves, synthesises,
+              and reasons, not just autocompletes. Every response is grounded in real
+              sources: your PDFs, the live web, or both at once.
+            </p>
+
+            <button className="btn-cta-primary" onClick={onEnter} style={{ marginTop: '2rem', transform: 'scale(1.2)' }}>
+              Begin seeking →
+            </button>
+          </div>
         </motion.div>
       </section>
-
-      {/* ── Footer ── */}
-      <footer className="home-footer">
-        <p className="footer-brand">Jignasa</p>
-        <p>Built with FastAPI · React · FAISS · Ollama · LangChain</p>
-        <p style={{ marginTop: '0.35rem' }}>
-          Fully local. Zero telemetry. Your knowledge stays yours.
-        </p>
-      </footer>
     </div>
   )
 }
