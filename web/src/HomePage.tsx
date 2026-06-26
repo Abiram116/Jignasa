@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { motion } from 'motion/react'
+import type { Variants } from 'motion/react'
 import ShinyText from './ShinyText'
 import ScrollFloat from './ScrollFloat'
 import { MagicBentoGlow } from './MagicBentoGlow'
@@ -186,7 +187,7 @@ const steps = [
 export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations = false }: HomePageProps) {
   const featuresRef = useRef<HTMLDivElement>(null)
 
-  const heroVariants = {
+  const heroVariants: Variants = {
     hidden: {},
     show: {
       transition: {
@@ -196,7 +197,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
     },
   }
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20, filter: 'blur(6px)' },
     show: {
       opacity: 1,
@@ -287,8 +288,8 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
         >
           <span className="scroll-arrow">↓</span>
           <span>Discover</span>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
       {/* ── Features ── */}
       <section className="features-section bento-section" ref={featuresRef}>
