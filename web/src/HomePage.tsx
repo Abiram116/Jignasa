@@ -1,13 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { motion } from 'motion/react'
 import type { Variants } from 'motion/react'
+import { motion } from 'motion/react'
 import ShinyText from './ShinyText'
 import ScrollFloat from './ScrollFloat'
 import { MagicBentoGlow } from './MagicBentoGlow'
+import { HorizontalScroller } from './HorizontalScroller'
 import { SmoothScroll } from './SmoothScroll'
 import { StaggerReveal } from './ScrollReveal'
-import { StickyPipeline } from './StickyPipeline'
-import { EvalResultsSection } from './EvalResultsSection'
 
 interface HomePageProps {
   onEnter: () => void
@@ -322,19 +321,8 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
         />
       </section>
 
-      {/* ── How it works ── */}
-      <section className="how-section">
-        <p className="section-eyebrow">Pipeline</p>
-        <ScrollFloat containerClassName="section-title">What happens when you hit send</ScrollFloat>
-        <p className="section-lead">
-          Five stages, each designed to either short-circuit for speed
-          or deepen for quality.
-        </p>
-        <StickyPipeline steps={steps} />
-      </section>
-
-      {/* ── Evaluation results ── */}
-      <EvalResultsSection onLoaded={onEvalLoaded} />
+      {/* ── Horizontal Scrollytelling (Pipeline & Metrics) ── */}
+      <HorizontalScroller steps={steps} onEvalLoaded={onEvalLoaded} />
 
       {/* ── Agent manifesto ── */}
       <section className="manifesto-section">
