@@ -340,7 +340,6 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       {/* ── Agent manifesto ── */}
       <section className="manifesto-section" style={{ padding: 0 }}>
         <motion.div 
-          className="manifesto-box"
           style={{ width: '100%', maxWidth: 'none', background: 'transparent', border: 'none', padding: '0 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4rem' }}
           initial={{ opacity: 0, scale: 0.95, filter: 'blur(8px)' }}
           whileInView={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
@@ -349,7 +348,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
         >
           <div style={{ position: 'relative', width: '100%', height: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TextPressure
-              text="जिज्ञासा"
+              text="JIGNASA"
               flex
               alpha={false}
               stroke={false}
