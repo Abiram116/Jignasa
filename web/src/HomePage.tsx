@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
 import ShinyText from './ShinyText'
 import BlurText from './BlurText'
 import ScrollFloat from './ScrollFloat'
@@ -14,35 +13,7 @@ interface HomePageProps {
   isFirstLoad?: boolean
 }
 
-/* ── Framer Motion hero reveal — each element gets this wrapper ── */
-function HeroReveal({
-  children,
-  delay = 0,
-  className,
-}: {
-  children: React.ReactNode
-  delay?: number
-  className?: string
-}) {
-  const reduce = useReducedMotion()
-  if (reduce) return <div className={className}>{children}</div>
-  return (
-    <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 28, filter: 'blur(10px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      transition={{
-        duration: 1.1,
-        delay,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
-/* ── Star field with shooting stars + coloured star varieties ── */
+/* ── Star field ── */
 function StarField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -64,10 +35,7 @@ function StarField() {
       [167, 139, 250],
     ]
 
-    const stars: {
-      x: number; y: number; r: number; o: number
-      speed: number; color: [number, number, number]
-    }[] = []
+    const stars: { x: number; y: number; r: number; o: number; speed: number; color: [number, number, number] }[] = []
 
     const resize = () => {
       canvas.width  = window.innerWidth
@@ -79,10 +47,10 @@ function StarField() {
     for (let i = 0; i < 280; i++) {
       const colorIdx = Math.floor(Math.random() * STAR_COLORS.length)
       stars.push({
-        x:     Math.random() * canvas.width,
-        y:     Math.random() * canvas.height,
-        r:     Math.random() * 1.4 + 0.2,
-        o:     Math.random() * 0.7 + 0.1,
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: Math.random() * 1.4 + 0.2,
+        o: Math.random() * 0.7 + 0.1,
         speed: Math.random() * 0.0006 + 0.0002,
         color: STAR_COLORS[colorIdx],
       })
@@ -92,7 +60,6 @@ function StarField() {
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       t += 0.008
-
       for (const s of stars) {
         const pulse = Math.sin(t * s.speed * 800 + s.x) * 0.3 + 0.7
         ctx.beginPath()
@@ -100,7 +67,6 @@ function StarField() {
         ctx.fillStyle = `rgba(${s.color[0]},${s.color[1]},${s.color[2]},${s.o * pulse})`
         ctx.fill()
       }
-
       animId = requestAnimationFrame(draw)
     }
     draw()
@@ -234,14 +200,14 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
 
       {/* ── Hero ── */}
       <section className="hero">
-        {/* Eyebrow — first to appear */}
-        <HeroReveal delay={0.15} className="hero-eyebrow">
+        {/* Eyebrow — CSS cinematic-reveal delay 0.15s */}
+        <div className="hero-eyebrow">
           <span className="eyebrow-dot" />
           <ShinyText text="Fully local · Privacy-first · Open source" color="var(--text-2)" />
-        </HeroReveal>
+        </div>
 
-        {/* Headline — BlurText runs its own per-letter reveal */}
-        <HeroReveal delay={0.3} className="hero-headline">
+        {/* Headline — CSS cinematic-reveal delay 0.35s */}
+        <div className="hero-headline">
           <h1>
             <BlurText text="Ask anything." animateBy="letters" delay={55} startDelay={0} />
             <BlurText
@@ -254,18 +220,16 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
               direction="bottom"
             />
           </h1>
-        </HeroReveal>
+        </div>
 
-        {/* Subtitle */}
-        <HeroReveal delay={0.6} className="hero-subtitle">
-          <p>
-            Jignasa, <em><BlurText text="the seeker" animateBy="words" delay={120} /></em> in Sanskrit, reads your PDFs,
-            searches the live web, and converses naturally, all on your machine.
-          </p>
-        </HeroReveal>
+        {/* Subtitle — CSS cinematic-reveal delay 0.6s */}
+        <p className="hero-subtitle">
+          Jignasa, <em><BlurText text="the seeker" animateBy="words" delay={120} /></em> in Sanskrit, reads your PDFs,
+          searches the live web, and converses naturally, all on your machine.
+        </p>
 
-        {/* CTA */}
-        <HeroReveal delay={0.8} className="hero-actions">
+        {/* CTA — CSS cinematic-reveal delay 0.8s */}
+        <div className="hero-actions">
           <button className="btn-cta-primary" onClick={onEnter}>
             Start a conversation
             <span style={{ fontSize: '1.1rem' }}>→</span>
@@ -276,10 +240,10 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
           >
             See how it works
           </button>
-        </HeroReveal>
+        </div>
 
-        {/* Mode pills */}
-        <HeroReveal delay={1.0} className="hero-modes">
+        {/* Mode pills — CSS cinematic-reveal delay 1.0s */}
+        <div className="hero-modes">
           {[
             { icon: '✦', label: 'Casual chat',  color: '#c084fc', glow: 'rgba(192,132,252,0.2)' },
             { icon: '📄', label: 'PDF RAG',      color: '#60a5fa', glow: 'rgba(96,165,250,0.2)'  },
@@ -295,18 +259,16 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
               <span style={{ color: m.color, fontWeight: 600 }}>{m.label}</span>
             </div>
           ))}
-        </HeroReveal>
+        </div>
 
-        {/* Scroll hint */}
-        <HeroReveal delay={1.3}>
-          <div
-            className="scroll-hint"
-            onClick={() => featuresRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          >
-            <span className="scroll-arrow">↓</span>
-            <span>Discover</span>
-          </div>
-        </HeroReveal>
+        {/* Scroll hint — CSS cinematic-reveal delay 1.3s */}
+        <div
+          className="scroll-hint"
+          onClick={() => featuresRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        >
+          <span className="scroll-arrow">↓</span>
+          <span>Discover</span>
+        </div>
       </section>
 
       {/* ── Features ── */}
@@ -346,7 +308,6 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
           Five stages, each designed to either short-circuit for speed
           or deepen for quality.
         </p>
-
         <StickyPipeline steps={steps} />
       </section>
 
