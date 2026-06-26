@@ -151,7 +151,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
 
       if (titleRef.current && isVisibleRef.current) {
         const titleRect = titleRef.current.getBoundingClientRect();
-        const maxDist = titleRect.width / 5; // Reduced radar detection range
+        const maxDist = titleRect.width / 3.5; // Slightly increased radar detection range
 
         spansRef.current.forEach(span => {
           if (!span) return;
