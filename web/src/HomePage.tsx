@@ -6,6 +6,7 @@ import ScrollFloat from './ScrollFloat'
 import { MagicBentoGlow } from './MagicBentoGlow'
 import { SmoothScroll } from './SmoothScroll'
 import { StaggerReveal } from './ScrollReveal'
+import ScrollWordReveal from './ScrollWordReveal'
 import TextPressure from './TextPressure'
 import { StickyPipeline } from './StickyPipeline'
 import { EvalResultsSection } from './EvalResultsSection'
@@ -327,10 +328,17 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       <section className="how-section">
         <p className="section-eyebrow">Pipeline</p>
         <ScrollFloat containerClassName="section-title">What happens when you hit send</ScrollFloat>
-        <p className="section-lead">
+        <ScrollWordReveal
+          baseOpacity={0.1}
+          enableBlur
+          baseRotation={3}
+          blurStrength={4}
+          textClassName="section-lead"
+          containerClassName="section-lead"
+        >
           Five stages, each designed to either short-circuit for speed
           or deepen for quality.
-        </p>
+        </ScrollWordReveal>
         <StickyPipeline steps={steps} />
       </section>
 
