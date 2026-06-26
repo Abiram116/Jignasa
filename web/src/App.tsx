@@ -501,6 +501,7 @@ function App() {
   const [connectLoaded, setConnectLoaded] = useState(false)
   const [evalLoaded, setEvalLoaded] = useState(false)
   const [preloaderComplete, setPreloaderComplete] = useState(false)
+  const [heroAnimate, setHeroAnimate] = useState(false)
   
   const [status, setStatus] = useState<Status | null>(null)
   const [connectError, setConnectError] = useState('')
@@ -981,6 +982,7 @@ function App() {
       {!preloaderComplete && (
         <PreLoader 
           loaded={isAppReady} 
+          onShrinkStart={() => setHeroAnimate(true)}
           onComplete={() => setPreloaderComplete(true)} 
         />
       )}
@@ -995,7 +997,7 @@ function App() {
               }
             }}
             onEvalLoaded={() => setEvalLoaded(true)}
-            triggerHeroAnimations={preloaderComplete}
+            triggerHeroAnimations={heroAnimate}
           />
         } />
         <Route path="/chat" element={
