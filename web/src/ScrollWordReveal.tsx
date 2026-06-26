@@ -48,7 +48,7 @@ const ScrollWordReveal = ({
     const el = containerRef.current;
     if (!el) return;
 
-    const scroller = scrollContainerRef && scrollContainerRef.current ? scrollContainerRef.current : window;
+    const scroller = scrollContainerRef && scrollContainerRef.current ? scrollContainerRef.current : '#root';
 
     gsap.fromTo(
       el,
