@@ -460,8 +460,8 @@ function CostCalculatorModal({
     ['Gemini Flash',     0.000000075,0.0000003 ],
   ] as [string, number, number][]
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Token cost estimate</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
