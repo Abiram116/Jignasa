@@ -9,19 +9,15 @@ import {
   renameConversation,
   fetchConversations,
   fetchMessages,
-  fetchSavedEvaluations,
   fetchStatus,
-  saveEvaluation,
   savePartialAssistant,
   streamChat,
-  streamEvaluation,
   truncateConversation,
 } from './api'
-import type { ChatMode, Conversation, EvalProgress, EvalSummary, Message, SavedEval, Source, Status, WebSource } from './types'
+import type { ChatMode, Conversation, Message, Source, Status, WebSource } from './types'
 import HomePage from './HomePage'
+import { PreLoader } from './PreLoader'
 import './index.css'
-
-type Tab = 'chat' | 'evaluation'
 
 /* ── Inline SVG icons ──────────────────────────────────────────────── */
 const Ic = {
@@ -501,9 +497,12 @@ function CostCalculatorModal({
 ═══════════════════════════════════════════════════════════════════════ */
 function App() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('chat')
+  // App initialization states
+  const [connectLoaded, setConnectLoaded] = useState(false)
+  const [evalLoaded, setEvalLoaded] = useState(false)
+  const [preloaderComplete, setPreloaderComplete] = useState(false)
+  
   const [status, setStatus] = useState<Status | null>(null)
-  const [loadingApp, setLoadingApp] = useState(true)
   const [connectError, setConnectError] = useState('')
   const [selectedMode, setSelectedMode] = useState<ChatMode>('auto')
   const [showCostModal, setShowCostModal] = useState(false)
@@ -527,14 +526,6 @@ function App() {
     userDisplay: string
     quote: string | null
   } | null>(null)
-
-  const [evalK, setEvalK] = useState(5)
-  const [evalRunning, setEvalRunning] = useState(false)
-  const [evalSummary, setEvalSummary] = useState<EvalSummary | null>(null)
-  const [evalLog, setEvalLog] = useState<string[]>([])
-  const [evalProgress, setEvalProgress] = useState<EvalProgress | null>(null)
-  const [saveName, setSaveName] = useState('')
-  const [saved, setSaved] = useState<SavedEval[]>([])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -586,8 +577,7 @@ function App() {
           setConversations(await fetchConversations())
         }
         setSessionId(sid)
-        setSaved(await fetchSavedEvaluations())
-        setLoadingApp(false)
+        setConnectLoaded(true)
         setConnectError('')
       } catch {
         if (cancelled) return
@@ -596,7 +586,7 @@ function App() {
           setTimeout(() => tryConnect(attempt + 1), DELAY)
         } else {
           setConnectError('Cannot reach backend on port 8000. Is the API server running?')
-          setLoadingApp(false)
+          setConnectLoaded(true) // Still unblock loader so we can show error
         }
       }
     }
@@ -959,41 +949,6 @@ function App() {
     await refreshConversations()
   }
 
-  const handleRunEval = async () => {
-    setEvalRunning(true)
-    setEvalLog([])
-    setEvalSummary(null)
-    setError('')
-    try {
-      await streamEvaluation(evalK, (event) => {
-        if (event.type === 'start') setEvalLog((l) => [...l, `▶ ${event.message as string}`])
-        if (event.type === 'progress') {
-          const p = event as unknown as EvalProgress & { type: string }
-          setEvalProgress(p)
-          const line = `[${p.current}/${p.total}] ${p.hit ? '✓' : '✗'} expected=${p.expected_document} got=${p.top_source ?? 'none'} — ${p.question}`
-          setEvalLog((l) => [...l, line])
-        }
-        if (event.type === 'complete') setEvalSummary(event.summary as EvalSummary)
-        if (event.type === 'error') setError(event.message as string)
-      })
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setEvalRunning(false)
-    }
-  }
-
-  const handleSaveEval = async () => {
-    if (!saveName.trim()) return
-    try {
-      await saveEvaluation(saveName.trim(), evalK)
-      setSaved(await fetchSavedEvaluations())
-      setSaveName('')
-    } catch (e) {
-      setError(String(e))
-    }
-  }
-
   /* ── Status badge ── */
   const renderStatus = () => {
     if (loadingApp) return (
@@ -1018,16 +973,14 @@ function App() {
     )
   }
 
-  const isFirstLoad = useRef(true)
-
   /* ── Render ── */
   return (
     <Routes>
       <Route path="/" element={
         <HomePage
-          isFirstLoad={isFirstLoad.current}
+          isFirstLoad={isFirstLoad}
           onEnter={() => {
-            isFirstLoad.current = false
+            setIsFirstLoad(false)
             navigate('/chat')
           }}
         />
@@ -1116,15 +1069,6 @@ function App() {
 
           {/* ════ Main ════ */}
           <div className="main">
-            <div className="tabs">
-              <button id="tab-chat" className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
-                <Ic.Chat /> Chat
-              </button>
-              <button id="tab-evaluation" className={`tab ${tab === 'evaluation' ? 'active' : ''}`} onClick={() => setTab('evaluation')}>
-                <Ic.Bar /> Evaluation
-              </button>
-            </div>
-
             {error && (
               <div className="error-banner" role="alert">
                 <span>⚠</span>
@@ -1133,16 +1077,14 @@ function App() {
               </div>
             )}
 
-            {/* ════ Chat tab ════ */}
-            {tab === 'chat' && (
-              <div className="chat-panel">
-                {loadingApp && (
+            <div className="chat-panel">
+                {!connectLoaded && (
                   <div className="loading-overlay">
                     <div className="spinner" />
                     <p>{connectError || 'Starting up…'}</p>
                   </div>
                 )}
-                {!loadingApp && !status && connectError && (
+                {connectLoaded && !status && connectError && (
                   <div className="loading-overlay">
                     <span style={{ fontSize: '2.5rem' }}>⚡</span>
                     <p style={{ color: 'var(--red)', textAlign: 'center', maxWidth: 320 }}>{connectError}</p>
@@ -1285,129 +1227,7 @@ function App() {
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* ════ Evaluation tab ════ */}
-            {tab === 'evaluation' && (
-              <div className="eval-panel">
-                <h2>Retrieval Evaluation</h2>
-
-                <div className="info-box">
-                  <strong>Fast, LLM-free evaluation.</strong> Embeds each test question, searches FAISS top-k,
-                  and checks if the expected PDF appears in results. No Ollama call is made — this benchmarks
-                  retrieval quality only.
-                </div>
-
-                <div className="eval-controls">
-                  <label htmlFor="eval-k">
-                    Top-k
-                    <input
-                      id="eval-k"
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={evalK}
-                      onChange={(e) => setEvalK(Number(e.target.value))}
-                    />
-                  </label>
-                  <button
-                    id="btn-run-eval"
-                    className="btn btn-primary"
-                    onClick={handleRunEval}
-                    disabled={evalRunning || !status?.ready}
-                  >
-                    {evalRunning ? '⏳ Running…' : '▶ Run evaluation'}
-                  </button>
-                  {evalRunning && evalProgress && (
-                    <div className="eval-progress-info">
-                      {evalProgress.current}/{evalProgress.total} · {evalProgress.elapsed_seconds}s
-                    </div>
-                  )}
-                </div>
-
-                {evalLog.length > 0 && (
-                  <div className="progress-log">
-                    {evalLog.map((line, i) => (
-                      <div
-                        key={i}
-                        className={`progress-line ${line.includes('✓') ? 'hit' : line.includes('✗') ? 'miss' : ''}`}
-                      >
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {evalSummary && (
-                  <>
-                    <div className="metrics-grid">
-                      {([
-                        ['Hit @ k',       `${(evalSummary.hit_at_k * 100).toFixed(1)}%`],
-                        ['MRR @ k',       evalSummary.mrr_at_k.toFixed(3)],
-                        ['Recall @ k',    `${(evalSummary.recall_at_k * 100).toFixed(1)}%`],
-                        ['Precision @ k', evalSummary.precision_at_k.toFixed(3)],
-                        ['nDCG @ k',      evalSummary.ndcg_at_k.toFixed(3)],
-                        ['Time',          `${evalSummary.elapsed_seconds}s`],
-                      ] as [string, string][]).map(([label, value]) => (
-                        <div className="metric-card" key={label}>
-                          <div className="label">{label}</div>
-                          <div className="value">{value}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <p className="eval-meta">
-                      {evalSummary.question_count} questions · k={evalSummary.k} · {evalSummary.evaluated_at} ·{' '}
-                      <em>{evalSummary.eval_type} (LLM: {evalSummary.uses_llm ? 'yes' : 'no'})</em>
-                    </p>
-
-                    <div className="save-row">
-                      <input
-                        id="save-name-input"
-                        placeholder="Name this snapshot (e.g. v1, baseline)…"
-                        value={saveName}
-                        onChange={(e) => setSaveName(e.target.value)}
-                      />
-                      <button
-                        id="btn-save-eval"
-                        className="btn btn-primary"
-                        onClick={handleSaveEval}
-                        disabled={!saveName.trim()}
-                      >
-                        Save snapshot
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {saved.length > 0 && (
-                  <div className="saved-section">
-                    <h3>Saved runs</h3>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Name</th><th>Hit @ k</th><th>MRR @ k</th>
-                          <th>Recall @ k</th><th>Time</th><th>Saved</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...saved].reverse().map((r) => (
-                          <tr key={r.name}>
-                            <td>{r.label || r.name}</td>
-                            <td>{(r.hit_at_k * 100).toFixed(1)}%</td>
-                            <td>{r.mrr_at_k.toFixed(3)}</td>
-                            <td>{(r.recall_at_k * 100).toFixed(1)}%</td>
-                            <td>{r.elapsed_seconds != null ? `${r.elapsed_seconds}s` : '—'}</td>
-                            <td>{r.saved_at}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
           </div>
           {showCostModal && (
             <CostCalculatorModal

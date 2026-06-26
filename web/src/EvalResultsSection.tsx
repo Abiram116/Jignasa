@@ -22,7 +22,7 @@ const RETRY_DELAY_MS = 1200
  * reflects whatever was last actually run (see data/evaluations/README.md
  * for the full methodology and caveats).
  */
-export function EvalResultsSection() {
+export function EvalResultsSection({ onLoaded }: { onLoaded?: () => void }) {
   const [data, setData] = useState<EvaluationSummaryResponse | null>(null)
   const [status, setStatus] = useState<LoadState>('loading')
 
@@ -35,6 +35,7 @@ export function EvalResultsSection() {
         if (cancelled) return
         setData(result)
         setStatus(result.retrieval || result.ragas ? 'ready' : 'empty')
+        onLoaded?.()
       } catch {
         if (cancelled) return
         if (attemptsLeft > 1) {
@@ -42,6 +43,7 @@ export function EvalResultsSection() {
           if (!cancelled) await attempt(attemptsLeft - 1)
         } else {
           setStatus('error')
+          onLoaded?.()
         }
       }
     }

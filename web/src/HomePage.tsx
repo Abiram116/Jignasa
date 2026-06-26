@@ -10,7 +10,8 @@ import { EvalResultsSection } from './EvalResultsSection'
 
 interface HomePageProps {
   onEnter: () => void
-  isFirstLoad?: boolean
+  onEvalLoaded?: () => void
+  triggerHeroAnimations?: boolean
 }
 
 /* ── Star field ── */
@@ -182,11 +183,11 @@ const steps = [
   },
 ]
 
-export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps) {
+export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations = false }: HomePageProps) {
   const featuresRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className={`homepage ${isFirstLoad ? 'first-load' : ''}`}>
+    <div className={`homepage ${triggerHeroAnimations ? 'first-load' : ''}`}>
       <SmoothScroll />
       <StarField />
       <AuroraLayer />
@@ -312,7 +313,7 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
       </section>
 
       {/* ── Evaluation results ── */}
-      <EvalResultsSection />
+      <EvalResultsSection onLoaded={onEvalLoaded} />
 
       {/* ── Agent manifesto ── */}
       <section className="manifesto-section">
