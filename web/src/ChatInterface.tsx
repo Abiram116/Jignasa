@@ -401,6 +401,11 @@ function MessageBubble({
           {msg.role === 'assistant' && msg.webSources && msg.webSources.length > 0 && !isStreaming && (
             <WebSources sources={msg.webSources} defaultOpen={false} />
           )}
+          {msg.role === 'assistant' && msg.webSearchDegraded && !isStreaming && (
+            <div className="web-degraded-note">
+              ⚠ Web search failed for this response — answer used document context only.
+            </div>
+          )}
         </div>
         {msg.role === 'assistant' && msg.message && msg.prompt_tokens !== undefined && msg.prompt_tokens > 0 && !isStreaming && (
           <div className="token-stats-box">
@@ -680,6 +685,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     let pendingMode: ChatMode = 'rag'
     let pendingSources: Source[] = []
     let pendingWebSources: WebSource[] = []
+    let pendingWebDegraded = false
     let pendingCached = false
     let pendingPromptTokens = 0
     let pendingCompletionTokens = 0
@@ -704,7 +710,10 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           pendingCached = event.is_cached
         }
         if (event.type === 'sources') pendingSources = event.sources
-        if (event.type === 'web_sources') pendingWebSources = event.sources
+        if (event.type === 'web_sources') {
+          pendingWebSources = event.sources
+          pendingWebDegraded = !!event.degraded
+        }
 
         // ── Backend asks if user wants web search ──
         if (event.type === 'ask_web_search') {
@@ -746,16 +755,11 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           pendingCached = event.cached ?? false
           pendingLatencyMs = event.latency_ms ?? 0
 
-          // Post-process web citations: replace [N] with clickable markdown links
-          if (pendingWebSources.length > 0) {
-            assistant = assistant.replace(/\[(\d+)\]/g, (_match, n: string) => {
-              const idx = parseInt(n, 10) - 1
-              if (idx >= 0 && idx < pendingWebSources.length) {
-                return `[[${n}]](${pendingWebSources[idx].url})`
-              }
-              return `[${n}]`
-            })
-          }
+          // The backend now applies [N] -> [[N]](url) citation linking
+          // server-side before caching/persisting (so it survives reloads,
+          // not just the live stream). event.content is that authoritative
+          // final text -- swap it in for the raw token-accumulated string.
+          if (event.content) assistant = event.content
         }
         if (event.type === 'error') setError(event.message ?? 'Chat error')
       }, activeQuote, controller.signal, confirmWebSearch)
@@ -769,6 +773,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
             mode: pendingMode,
             sources: pendingSources.length ? pendingSources : undefined,
             webSources: pendingWebSources.length ? pendingWebSources : undefined,
+            webSearchDegraded: pendingWebDegraded,
             prompt_tokens: pendingPromptTokens,
             completion_tokens: pendingCompletionTokens,
             cached: pendingCached,
