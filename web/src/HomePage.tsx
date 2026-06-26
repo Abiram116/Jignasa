@@ -351,7 +351,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
               text="JIGNASA"
               fontFamily="Outfit, sans-serif"
               fontUrl=""
-              flex
+              flex={false}
               alpha={false}
               stroke={false}
               width={false}
