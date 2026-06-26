@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import ShinyText from './ShinyText'
-import BlurText from './BlurText'
 import ScrollFloat from './ScrollFloat'
 import { MagicBentoGlow } from './MagicBentoGlow'
 import { SmoothScroll } from './SmoothScroll'

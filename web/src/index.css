@@ -3157,4 +3157,12 @@ tr:last-child td { border-bottom: none; }
 }
 .preloader-layer.bg-cyan   { background: var(--cyan-400); z-index: 3; }
 .preloader-layer.bg-violet { background: var(--violet-500); z-index: 4; }
-.preloader-layer.bg-indigo { background: var(--indigo-500); z-index: 5; }
+.preloader-layer.bg-ember  { background: var(--ember-400); z-index: 5; }
+.preloader-layer.bg-sage   { background: var(--sage-400); z-index: 6; }
+.preloader-layer.bg-indigo { 
+  background: var(--indigo-500); 
+  z-index: 7; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+}
