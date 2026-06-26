@@ -3,6 +3,7 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { fetchEvaluationSummary } from './api'
 import type { EvaluationSummaryResponse } from './types'
+import './HorizontalScroller.css'
 
 gsap.registerPlugin(ScrollTrigger)
 
