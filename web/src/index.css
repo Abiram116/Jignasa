@@ -2691,17 +2691,20 @@ tr:last-child td { border-bottom: none; }
   50% { transform: translateY(-6px); }
 }
 
-@keyframes cinematic-reveal {
-  0% { opacity: 0; transform: translateY(20px) scale(0.96); filter: blur(8px); }
-  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+/* ── Unified Hero entrance ── */
+@keyframes hero-fade-up {
+  0% { opacity: 0; transform: translateY(16px); filter: blur(4px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 
-.homepage.first-load .hero-eyebrow { animation: cinematic-reveal 0.8s var(--ease) 0.1s both; }
-.homepage.first-load .hero-headline { animation: cinematic-reveal 0.9s var(--ease) 0.2s both; }
-.homepage.first-load .hero-subtitle { animation: cinematic-reveal 0.9s var(--ease) 0.3s both; }
-.homepage.first-load .hero-actions  { animation: cinematic-reveal 0.9s var(--ease) 0.4s both; }
-.homepage.first-load .hero-modes    { animation: cinematic-reveal 0.9s var(--ease) 0.5s both; }
-.homepage.first-load .scroll-hint   { animation: cinematic-reveal 1s var(--ease) 1s both; }
+.homepage:not(.hero-animate) .hero {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.homepage.hero-animate .hero {
+  animation: hero-fade-up 1.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 
 
 @keyframes brand-shimmer {
