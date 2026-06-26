@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'motion/react'
 import type { Transition } from 'motion/react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 /**
  * Isolated motion leaf component. Wraps children in a fade-up reveal,
@@ -12,13 +12,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
  * viewport never scrolls so IntersectionObserver misses them.
  */
 
-function useRootRef() {
-  const ref = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    ref.current = document.querySelector<HTMLElement>('#root')
-  }, [])
-  return ref
-}
+
 
 export function ScrollReveal({
   children,
@@ -32,7 +26,6 @@ export function ScrollReveal({
   className?: string
 }) {
   const reduce = useReducedMotion()
-  const rootRef = useRootRef()
 
   if (reduce) {
     return <div className={className}>{children}</div>
@@ -55,7 +48,7 @@ export function ScrollReveal({
       className={className}
       initial={initial}
       whileInView={animate}
-      viewport={{ once: true, amount: 0.2, root: rootRef }}
+      viewport={{ once: true, amount: 0.2 }}
       transition={transition}
     >
       {children}
@@ -80,7 +73,6 @@ export function StaggerReveal<T extends { key: string }>({
   itemClassName?: string | ((item: T, index: number) => string)
 }) {
   const reduce = useReducedMotion()
-  const rootRef = useRootRef()
   const classFor = (item: T, i: number) =>
     typeof itemClassName === 'function' ? itemClassName(item, i) : itemClassName
 
@@ -116,7 +108,7 @@ export function StaggerReveal<T extends { key: string }>({
             key={item.key}
             initial={initial}
             whileInView={animate}
-            viewport={{ once: true, amount: 0.1, root: rootRef }}
+            viewport={{ once: true, amount: 0.1 }}
             transition={{ type: 'spring', bounce: 0, duration: 1.0, delay: (i * staggerMs) / 1000 } as Transition}
           >
             {renderItem(item)}
