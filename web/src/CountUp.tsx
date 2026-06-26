@@ -1,13 +1,6 @@
 import { animate, useInView, useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 
-function useRootRef() {
-  const ref = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    ref.current = document.querySelector<HTMLElement>('#root')
-  }, [])
-  return ref
-}
 
 interface CountUpProps {
   to: number
@@ -27,12 +20,10 @@ export default function CountUp({
   decimals,
 }: CountUpProps) {
   const ref = useRef<HTMLSpanElement>(null)
-  const rootRef = useRootRef()
   const reduce = useReducedMotion()
   
-  // Must use rootRef so it correctly observes the #root scroll container,
-  // rather than the window viewport (which never scrolls).
-  const isInView = useInView(ref, { once: true, amount: 0.1, root: rootRef })
+  // Use standard viewport intersection
+  const isInView = useInView(ref, { once: true, amount: 0.1 })
 
   const maxDecimals = decimals ?? (() => {
     const str = to.toString()
