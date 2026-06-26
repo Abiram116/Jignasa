@@ -59,6 +59,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const spansRef = useRef<(HTMLSpanElement | null)[]>([]);
+  const isVisibleRef = useRef(true);
 
   const mouseRef = useRef({ x: 0, y: 0 });
   const cursorRef = useRef({ x: 0, y: 0 });
@@ -91,9 +92,23 @@ const TextPressure: React.FC<TextPressureProps> = ({
       cursorRef.current.y = mouseRef.current.y;
     }
 
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]) {
+          isVisibleRef.current = entries[0].isIntersecting;
+        }
+      },
+      { threshold: 0 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('touchmove', handleTouchMove);
+      observer.disconnect();
     };
   }, []);
 
@@ -134,7 +149,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
       mouseRef.current.x += (cursorRef.current.x - mouseRef.current.x) / 15;
       mouseRef.current.y += (cursorRef.current.y - mouseRef.current.y) / 15;
 
-      if (titleRef.current) {
+      if (titleRef.current && isVisibleRef.current) {
         const titleRect = titleRef.current.getBoundingClientRect();
         const maxDist = titleRect.width / 5; // Reduced radar detection range
 
