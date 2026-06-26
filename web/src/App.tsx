@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import HomePage from './HomePage'
 import ChatInterface from './ChatInterface'
+import { AppProvider } from './AppContext'
 import { PreLoader } from './PreLoader'
 import './index.css'
 
@@ -13,7 +14,7 @@ export default function App() {
   const [preloaderComplete, setPreloaderComplete] = useState(location.pathname !== '/')
 
   return (
-    <>
+    <AppProvider>
       {!preloaderComplete && (
         <PreLoader 
           loaded={true} 
@@ -24,6 +25,6 @@ export default function App() {
         <Route path="/" element={<HomePage onEnter={() => navigate('/chat')} triggerHeroAnimations={preloaderComplete} />} />
         <Route path="/chat" element={<ChatInterface onBack={() => navigate('/')} />} />
       </Routes>
-    </>
+    </AppProvider>
   )
 }

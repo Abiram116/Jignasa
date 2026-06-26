@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 
 import ReactMarkdown from 'react-markdown'
@@ -10,12 +10,12 @@ import {
   renameConversation,
   fetchConversations,
   fetchMessages,
-  fetchStatus,
   savePartialAssistant,
   streamChat,
   truncateConversation,
 } from './api'
-import type { ChatMode, Conversation, Message, Source, Status, WebSource } from './types'
+import type { ChatMode, Message, Source, WebSource } from './types'
+import { useAppState } from './AppContext'
 import './index.css'
 
 /* ── Inline SVG icons ──────────────────────────────────────────────── */
@@ -501,17 +501,23 @@ function CostCalculatorModal({
    Main App
 ═══════════════════════════════════════════════════════════════════════ */
 export default function ChatInterface({ onBack }: { onBack: () => void }) {
+  const {
+    connectLoaded,
+    connectError,
+    status,
+    conversations,
+    setConversations,
+    sessionId,
+    setSessionId,
+    refreshConversations
+  } = useAppState()
+
   // App initialization states
-  const [connectLoaded, setConnectLoaded] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   
-  const [status, setStatus] = useState<Status | null>(null)
-  const [connectError, setConnectError] = useState('')
   const [selectedMode, setSelectedMode] = useState<ChatMode>('auto')
   const [showCostModal, setShowCostModal] = useState(false)
 
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [sessionId, setSessionId] = useState<string | null>(null)
   const [title, setTitle] = useState('New Chat')
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -553,49 +559,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  const refreshConversations = useCallback(async () => {
-    setConversations(await fetchConversations())
-  }, [])
-
-  /* ── Bootstrap ── */
-  useEffect(() => {
-    let cancelled = false
-    const MAX = 20
-    const DELAY = 1500
-
-    const tryConnect = async (attempt: number): Promise<void> => {
-      try {
-        const s = await fetchStatus()
-        if (cancelled) return
-        setStatus(s)
-        const list = await fetchConversations()
-        setConversations(list)
-        let sid: string
-        if (list.length) {
-          sid = list[0].session_id
-        } else {
-          const c = await createConversation()
-          sid = c.session_id
-          setConversations(await fetchConversations())
-        }
-        setSessionId(sid)
-        setConnectLoaded(true)
-        setConnectError('')
-      } catch {
-        if (cancelled) return
-        if (attempt < MAX) {
-          setConnectError(`Connecting… (${attempt + 1}/${MAX})`)
-          setTimeout(() => tryConnect(attempt + 1), DELAY)
-        } else {
-          setConnectError('Cannot reach backend on port 8000. Is the API server running?')
-          setConnectLoaded(true) // Still unblock loader so we can show error
-        }
-      }
-    }
-    tryConnect(0)
-    return () => { cancelled = true }
-  }, [])
 
   useEffect(() => {
     if (!sessionId) return
