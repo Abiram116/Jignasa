@@ -1,11 +1,8 @@
-// Originally adapted from react-bits CountUp (spring-based). Rewritten as a
-// stepped "odometer" count instead: big jumps early (0, 10, 20, 30...) that
-// settle into single-unit increments for the last ~20% as it nears the
-// target -- a smooth spring doesn't read as "counting," discrete ticks do.
-//
-// startDelay: ms to wait after entering view before starting the count.
-// This matters when the CountUp is wrapped in a Framer Motion whileInView
-// reveal: without the delay the count finishes before opacity reaches 1.
+// Stepped odometer count: big jumps early, fine ticks for last 20%.
+// Key fix: IntersectionObserver uses #root as its root (not the viewport)
+// because #root is the scroll container — the viewport never scrolls.
+// startDelay gives Framer Motion's whileInView reveal time to show the
+// element before the count starts (otherwise it counts while opacity=0).
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -22,13 +19,35 @@ const COARSE_STEPS = 8
 const COARSE_FRACTION = 0.8
 const COARSE_TIME_SHARE = 0.45
 
-export default function CountUp({ to, from = 0, duration = 1.8, startDelay = 350, className = '', decimals }: CountUpProps) {
+export default function CountUp({
+  to,
+  from = 0,
+  duration = 1.8,
+  startDelay = 400,
+  className = '',
+  decimals,
+}: CountUpProps) {
   const ref = useRef<HTMLSpanElement>(null)
   const reduce = useReducedMotion()
   const [isInView, setIsInView] = useState(false)
 
+  const maxDecimals = decimals ?? (() => {
+    const str = to.toString()
+    return str.includes('.') ? str.split('.')[1].length : 0
+  })()
+
+  // Set initial display value
+  useEffect(() => {
+    if (ref.current) ref.current.textContent = from.toFixed(maxDecimals)
+  }, [from, maxDecimals])
+
+  // Use #root as scroll root so IntersectionObserver fires correctly
+  // when #root scrolls (not the window/viewport)
   useEffect(() => {
     if (!ref.current) return
+
+    const scrollRoot = document.querySelector<HTMLElement>('#root')
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -36,22 +55,17 @@ export default function CountUp({ to, from = 0, duration = 1.8, startDelay = 350
           observer.disconnect()
         }
       },
-      { threshold: 0, rootMargin: '0px 0px -5% 0px' },
+      {
+        root: scrollRoot ?? null,
+        threshold: 0.1,
+        rootMargin: '0px',
+      },
     )
     observer.observe(ref.current)
     return () => observer.disconnect()
   }, [])
 
-  const maxDecimals = decimals ?? (() => {
-    const str = to.toString()
-    return str.includes('.') ? str.split('.')[1].length : 0
-  })()
-
-  useEffect(() => {
-    if (!ref.current) return
-    ref.current.textContent = (from).toFixed(maxDecimals)
-  }, [from, maxDecimals])
-
+  // Run the count animation once in view
   useEffect(() => {
     if (!isInView || !ref.current) return
     const el = ref.current
@@ -65,14 +79,11 @@ export default function CountUp({ to, from = 0, duration = 1.8, startDelay = 350
     const coarseEnd = from + range * COARSE_FRACTION
     const unit = Math.pow(10, -maxDecimals)
     const fineSteps = Math.max(1, Math.round((to - coarseEnd) / unit))
-
     const coarseDuration = duration * 1000 * COARSE_TIME_SHARE
     const fineDuration = duration * 1000 * (1 - COARSE_TIME_SHARE)
 
     let raf: number
-    let timeoutId: ReturnType<typeof setTimeout>
-
-    const runAnimation = () => {
+    const timeoutId = setTimeout(() => {
       const start = performance.now()
 
       const tick = (now: number) => {
@@ -101,9 +112,8 @@ export default function CountUp({ to, from = 0, duration = 1.8, startDelay = 350
       }
 
       raf = requestAnimationFrame(tick)
-    }
+    }, startDelay)
 
-    timeoutId = setTimeout(runAnimation, startDelay)
     return () => {
       clearTimeout(timeoutId)
       cancelAnimationFrame(raf)
