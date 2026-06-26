@@ -349,10 +349,12 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
           <div style={{ position: 'relative', width: '95%', maxWidth: '1500px', height: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TextPressure
               text="JIGNASA"
+              fontFamily="Outfit, sans-serif"
+              fontUrl=""
               flex
               alpha={false}
               stroke={false}
-              width={true}
+              width={false}
               weight={true}
               italic={true}
               textColor="#ffffff"
