@@ -1,4 +1,4 @@
-import { motion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useEffect, useState } from 'react'
 import './index.css'
 
@@ -8,7 +8,7 @@ interface PreLoaderProps {
 }
 
 export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
-  const [phase, setPhase] = useState<'expanding' | 'shrinking' | 'done'>('expanding')
+  const [phase, setPhase] = useState<'expanding' | 'completing' | 'shrinking' | 'done'>('expanding')
   const [minTimePassed, setMinTimePassed] = useState(false)
 
   // 1. Wait for minimum expansion time (1.2s for staggered colors to sweep across)
@@ -19,16 +19,21 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
     return () => clearTimeout(timer)
   }, [])
 
-  // 2. Shrink when both minimum time passed AND backend is loaded
+  // 2. Complete and shrink when backend is loaded
   useEffect(() => {
     if (minTimePassed && loaded && phase === 'expanding') {
-      setPhase('shrinking')
+      setPhase('completing')
       
-      // Wait for the shrinking mask to reveal the app
+      // Wait for the "Agent awoke" text and spinner-to-dot transition (0.6s)
       setTimeout(() => {
-        setPhase('done')
-        onComplete()
-      }, 1000)
+        setPhase('shrinking')
+        
+        // Wait for the shrinking mask to reveal the app
+        setTimeout(() => {
+          setPhase('done')
+          onComplete()
+        }, 1000)
+      }, 700)
     }
   }, [minTimePassed, loaded, phase, onComplete])
 
@@ -66,10 +71,48 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
       <motion.div className="preloader-layer bg-ember"  custom={0.20} variants={layerVariants} initial="initial" animate="expanding" />
       <motion.div className="preloader-layer bg-sage"   custom={0.30} variants={layerVariants} initial="initial" animate="expanding" />
       <motion.div className="preloader-layer bg-indigo" custom={0.40} variants={layerVariants} initial="initial" animate="expanding">
-        {/* Loading text sits inside the final layer and fades in softly once it covers the screen */}
+        
+        {/* Loading content sits inside the final layer and fades in softly */}
         <div className="preloader-content" style={{ animation: 'fade-in 0.5s ease-out 0.8s both' }}>
-          <div className="preloader-spinner" style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#fff' }} />
-          <div className="preloader-text" style={{ color: '#fff' }}>Waking up the agent...</div>
+          
+          <div 
+            className={`preloader-spinner ${phase === 'completing' || phase === 'shrinking' ? 'completed' : ''}`} 
+            style={{ 
+              borderColor: 'rgba(255,255,255,0.15)', 
+              borderTopColor: '#fff' 
+            }} 
+          />
+
+          <div className="preloader-text-container" style={{ position: 'relative', height: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <AnimatePresence mode="wait">
+              {phase === 'expanding' ? (
+                <motion.div 
+                  key="waking" 
+                  initial={{ opacity: 0, y: 5 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.2 }}
+                  className="preloader-text" 
+                  style={{ color: '#fff', position: 'absolute', whiteSpace: 'nowrap' }}
+                >
+                  Waking up the agent...
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="awoke" 
+                  initial={{ opacity: 0, y: 5 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.2 }}
+                  className="preloader-text" 
+                  style={{ color: '#fff', position: 'absolute', whiteSpace: 'nowrap' }}
+                >
+                  Agent awoke.
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
         </div>
       </motion.div>
     </motion.div>

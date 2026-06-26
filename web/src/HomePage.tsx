@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { motion } from 'motion/react'
 import ShinyText from './ShinyText'
 import ScrollFloat from './ScrollFloat'
 import { MagicBentoGlow } from './MagicBentoGlow'
@@ -185,8 +186,28 @@ const steps = [
 export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations = false }: HomePageProps) {
   const featuresRef = useRef<HTMLDivElement>(null)
 
+  const heroVariants = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: 0.08,
+        delayChildren: 0.1,
+      },
+    },
+  }
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20, filter: 'blur(6px)' },
+    show: {
+      opacity: 1,
+      y: 0,
+      filter: 'blur(0px)',
+      transition: { type: 'spring', bounce: 0, duration: 1.0 },
+    },
+  }
+
   return (
-    <div className={`homepage ${triggerHeroAnimations ? 'hero-animate' : ''}`}>
+    <div className="homepage">
       <SmoothScroll />
       <StarField />
       <AuroraLayer />
@@ -199,29 +220,34 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       </div>
 
       {/* ── Hero ── */}
-      <section className="hero">
-        {/* Eyebrow — CSS cinematic-reveal delay 0.15s */}
-        <div className="hero-eyebrow">
+      <motion.section 
+        className="hero"
+        variants={heroVariants}
+        initial="hidden"
+        animate={triggerHeroAnimations ? "show" : "hidden"}
+      >
+        {/* Eyebrow */}
+        <motion.div className="hero-eyebrow" variants={itemVariants}>
           <span className="eyebrow-dot" />
           <ShinyText text="Fully local · Privacy-first · Open source" color="var(--text-2)" />
-        </div>
+        </motion.div>
 
         {/* Headline */}
-        <div className="hero-headline">
+        <motion.div className="hero-headline" variants={itemVariants}>
           <h1>
             <span>Ask anything.</span>
             <div className="headline-accent">Know everything.</div>
           </h1>
-        </div>
+        </motion.div>
 
         {/* Subtitle */}
-        <p className="hero-subtitle">
+        <motion.p className="hero-subtitle" variants={itemVariants}>
           Jignasa, <em>the seeker</em> in Sanskrit, reads your PDFs,
           searches the live web, and converses naturally, all on your machine.
-        </p>
+        </motion.p>
 
-        {/* CTA — CSS cinematic-reveal delay 0.8s */}
-        <div className="hero-actions">
+        {/* CTA */}
+        <motion.div className="hero-actions" variants={itemVariants}>
           <button className="btn-cta-primary" onClick={onEnter}>
             Start a conversation
             <span style={{ fontSize: '1.1rem' }}>→</span>
@@ -232,10 +258,10 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
           >
             See how it works
           </button>
-        </div>
+        </motion.div>
 
-        {/* Mode pills — CSS cinematic-reveal delay 1.0s */}
-        <div className="hero-modes">
+        {/* Mode pills */}
+        <motion.div className="hero-modes" variants={itemVariants}>
           {[
             { icon: '✦', label: 'Casual chat',  color: '#c084fc', glow: 'rgba(192,132,252,0.2)' },
             { icon: '📄', label: 'PDF RAG',      color: '#60a5fa', glow: 'rgba(96,165,250,0.2)'  },
@@ -251,11 +277,12 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
               <span style={{ color: m.color, fontWeight: 600 }}>{m.label}</span>
             </div>
           ))}
-        </div>
+        </motion.div>
 
-        {/* Scroll hint — CSS cinematic-reveal delay 1.3s */}
-        <div
+        {/* Scroll hint */}
+        <motion.div
           className="scroll-hint"
+          variants={itemVariants}
           onClick={() => featuresRef.current?.scrollIntoView({ behavior: 'smooth' })}
         >
           <span className="scroll-arrow">↓</span>
