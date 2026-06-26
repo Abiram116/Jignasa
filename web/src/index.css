@@ -2084,7 +2084,7 @@ tr:last-child td { border-bottom: none; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-bottom: 2rem;
-  animation: fade-up 0.6s var(--ease) 0.1s both;
+  /* animation owned by Framer Motion (HomePage.tsx) */
 }
 
 .eyebrow-dot {
@@ -2098,7 +2098,7 @@ tr:last-child td { border-bottom: none; }
 
 /* Hero headline */
 .hero-headline {
-  animation: fade-up 0.7s var(--ease) 0.2s both;
+  /* animation owned by Framer Motion */
   margin-bottom: 1.5rem;
 }
 
@@ -2125,7 +2125,7 @@ tr:last-child td { border-bottom: none; }
   max-width: 560px;
   line-height: 1.75;
   margin: 0 auto;
-  animation: fade-up 0.7s var(--ease) 0.3s both;
+  /* animation owned by Framer Motion */
   margin-bottom: 2.5rem;
 }
 
@@ -2141,7 +2141,7 @@ tr:last-child td { border-bottom: none; }
   gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
-  animation: fade-up 0.7s var(--ease) 0.4s both;
+  /* animation owned by Framer Motion */
   margin-bottom: 3rem;
 }
 
@@ -2696,11 +2696,8 @@ tr:last-child td { border-bottom: none; }
   100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 
-.homepage.first-load .hero-eyebrow { animation: cinematic-reveal 0.8s var(--ease) 0.1s both; }
-.homepage.first-load .hero-subtitle { animation: cinematic-reveal 0.9s var(--ease) 0.3s both; }
-.homepage.first-load .hero-actions  { animation: cinematic-reveal 0.9s var(--ease) 0.4s both; }
-.homepage.first-load .hero-modes    { animation: cinematic-reveal 0.9s var(--ease) 0.5s both; }
-.homepage.first-load .scroll-hint   { animation: cinematic-reveal 1s var(--ease) 1s both; }
+/* Hero reveal animations are handled by Framer Motion in HomePage.tsx.
+   The cinematic-reveal keyframe is kept for reference but not applied via CSS. */
 
 @keyframes brand-shimmer {
   0%   { background-position: 200% center; }
@@ -2725,9 +2722,9 @@ tr:last-child td { border-bottom: none; }
 
 .manifesto-box {
   position: relative;
-  max-width: 980px;
+  max-width: 700px;
   margin: 0 auto;
-  padding: 4.5rem 3rem;
+  padding: 3rem 2.25rem;
   border-radius: var(--r-2xl);
   text-align: center;
   overflow: hidden;
