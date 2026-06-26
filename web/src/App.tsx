@@ -951,7 +951,7 @@ function App() {
 
   /* ── Status badge ── */
   const renderStatus = () => {
-    if (loadingApp) return (
+    if (!connectLoaded) return (
       <div className="status-pill warn">
         <div className="status-dot" />
         <span>Connecting…</span>
@@ -1219,7 +1219,7 @@ function App() {
                           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
                         }}
                         placeholder="Ask anything — documents, web, or just chat…"
-                        disabled={!status?.ready && !loadingApp}
+                        disabled={!status?.ready && connectLoaded}
                         maxLength={MAX_CHARS}
                       />
                       <button
