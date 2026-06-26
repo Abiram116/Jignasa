@@ -17,7 +17,7 @@ from scripts.evaluate_rag_metrics import (
     search,
 )
 
-from api.config import SAVED_METRICS_PATH
+from api.config import EVALUATIONS_DIR, SAVED_METRICS_PATH
 
 EVAL_TYPE = "retrieval_only"
 EVAL_DESCRIPTION = (
@@ -30,6 +30,33 @@ def load_saved_metrics() -> list[dict]:
     if not SAVED_METRICS_PATH.exists():
         return []
     return json.loads(SAVED_METRICS_PATH.read_text(encoding="utf-8"))
+
+
+def load_evaluation_summary() -> dict:
+    """
+    For the homepage's evaluation-results section: the latest retrieval-only
+    snapshot plus the latest RAGAS generation-quality summary, read live so
+    the page always reflects whatever was last actually run -- not a
+    hardcoded number that goes stale.
+
+    Picks the most-recently-modified `*_summary.json` for RAGAS rather than
+    a hardcoded name like "ragas_v1", so future re-runs under a new name are
+    picked up automatically.
+    """
+    retrieval_snapshots = load_saved_metrics()
+    latest_retrieval = retrieval_snapshots[-1] if retrieval_snapshots else None
+
+    ragas_summary = None
+    if EVALUATIONS_DIR.exists():
+        summary_files = sorted(
+            EVALUATIONS_DIR.glob("*_summary.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if summary_files:
+            ragas_summary = json.loads(summary_files[0].read_text(encoding="utf-8"))
+
+    return {"retrieval": latest_retrieval, "ragas": ragas_summary}
 
 
 def _evaluate_rows(k: int) -> Iterator[tuple[int, int, str, dict, float, list[dict]]]:

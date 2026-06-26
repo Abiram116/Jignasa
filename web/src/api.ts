@@ -1,4 +1,4 @@
-import type { ChatMode, Conversation, EvalProgress, EvalSummary, Message, SavedEval, Source, Status, WebSource } from './types'
+import type { ChatMode, Conversation, EvaluationSummaryResponse, Message, Source, Status, WebSource } from './types'
 
 const API = '/api'
 
@@ -90,45 +90,8 @@ export async function streamChat(
   }
 }
 
-export async function streamEvaluation(
-  k: number,
-  onEvent: (event: Record<string, unknown>) => void,
-): Promise<void> {
-  const res = await fetch(`${API}/evaluation/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ k }),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  const reader = res.body?.getReader()
-  if (!reader) throw new Error('No response body')
-  const decoder = new TextDecoder()
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        onEvent(JSON.parse(line.slice(6)))
-      }
-    }
-  }
-}
-
-export async function fetchSavedEvaluations(): Promise<SavedEval[]> {
-  const res = await fetch(`${API}/evaluation/saved`)
-  return res.json()
-}
-
-export async function saveEvaluation(name: string, k: number): Promise<SavedEval> {
-  const res = await fetch(`${API}/evaluation/save`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, k }),
-  })
+export async function fetchEvaluationSummary(): Promise<EvaluationSummaryResponse> {
+  const res = await fetch(`${API}/evaluation/summary`)
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
@@ -154,4 +117,3 @@ export async function savePartialAssistant(
   })
 }
 
-export type { EvalSummary, EvalProgress }

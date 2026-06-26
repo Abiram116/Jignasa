@@ -13,6 +13,12 @@
       "skillPath": "skills/emil-design-eng/SKILL.md",
       "computedHash": "8bdf9e4e6de7a4969147bf4828a4ad2c5aacd9fba4b690b250a85e0467ca387d"
     },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "4eabc66183767153e404b39d1b839b1c37f2d82d86f0a0d7e880a579d8d62336"
+    },
     "impeccable": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
@@ -36,6 +42,18 @@
       "sourceType": "github",
       "skillPath": "skills/ui-ux-pro-max/SKILL.md",
       "computedHash": "13887b516bebbd2e97885435ea022b2aec36cc77224f639d098a47f2723865cb"
+    },
+    "vercel-react-best-practices": {
+      "source": "boraoztunc/skills",
+      "sourceType": "github",
+      "skillPath": "vercel-react-best-practices/SKILL.md",
+      "computedHash": "16d55f4ae4f505ec12c427531c847e3b4cf0b22e4e5e01266ca7f8609f043c00"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
     }
   }
 }

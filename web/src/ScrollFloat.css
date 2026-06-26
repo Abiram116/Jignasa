@@ -1,0 +1,9 @@
+/* Adapted from react-bits ScrollFloat (MIT+Commons Clause). */
+.scroll-float {
+  overflow: hidden;
+}
+
+.sf-char {
+  display: inline-block;
+  will-change: transform, opacity;
+}
