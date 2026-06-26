@@ -283,7 +283,9 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
         {/* Scroll hint */}
         <motion.div
           className="scroll-hint"
-          variants={itemVariants}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: triggerHeroAnimations ? 1 : 0 }}
+          transition={{ duration: 1, delay: 0.6 }}
           onClick={() => featuresRef.current?.scrollIntoView({ behavior: 'smooth' })}
         >
           <span className="scroll-arrow">↓</span>

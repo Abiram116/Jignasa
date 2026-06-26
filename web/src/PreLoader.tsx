@@ -5,9 +5,10 @@ import './index.css'
 interface PreLoaderProps {
   loaded: boolean
   onComplete: () => void
+  onShrinkStart?: () => void
 }
 
-export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
+export function PreLoader({ loaded, onComplete, onShrinkStart }: PreLoaderProps) {
   const [phase, setPhase] = useState<'expanding' | 'completing' | 'shrinking' | 'done'>('expanding')
   const [minTimePassed, setMinTimePassed] = useState(false)
 
@@ -27,6 +28,7 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
       // Wait for the "Agent awoke" text and spinner-to-dot transition (0.6s)
       setTimeout(() => {
         setPhase('shrinking')
+        onShrinkStart?.()
         
         // Wait for the shrinking mask to reveal the app
         setTimeout(() => {
@@ -75,13 +77,36 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
         {/* Loading content sits inside the final layer and fades in softly */}
         <div className="preloader-content" style={{ animation: 'fade-in 0.5s ease-out 0.8s both' }}>
           
-          <div 
-            className={`preloader-spinner ${phase === 'completing' || phase === 'shrinking' ? 'completed' : ''}`} 
-            style={{ 
-              borderColor: 'rgba(255,255,255,0.15)', 
-              borderTopColor: '#fff' 
-            }} 
-          />
+          <svg width="48" height="48" viewBox="0 0 48 48" style={{ overflow: 'visible', marginBottom: '8px' }}>
+            <circle cx="24" cy="24" r="18" stroke="rgba(255,255,255,0.15)" strokeWidth="3" fill="none" />
+            <motion.circle
+              cx="24" cy="24" r="18"
+              stroke="#fff"
+              strokeWidth={phase === 'expanding' ? 3 : 18}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={113}
+              initial={{ strokeDashoffset: 85, rotate: -90 }}
+              animate={
+                phase === 'expanding'
+                  ? { 
+                      strokeDashoffset: 85, 
+                      rotate: 270, 
+                      transition: { rotate: { repeat: Infinity, duration: 1, ease: "linear" } } 
+                    }
+                  : { 
+                      strokeDashoffset: 0, 
+                      rotate: 270,
+                      strokeWidth: 18,
+                      transition: { 
+                        strokeDashoffset: { duration: 0.4, ease: "easeOut" },
+                        strokeWidth: { delay: 0.2, duration: 0.3, type: "spring", bounce: 0 },
+                      } 
+                    }
+              }
+              style={{ transformOrigin: '50% 50%' }}
+            />
+          </svg>
 
           <div className="preloader-text-container" style={{ position: 'relative', height: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <AnimatePresence mode="wait">
