@@ -212,7 +212,8 @@ const TextPressure: React.FC<TextPressureProps> = ({
           fontWeight: 100,
           color: stroke ? undefined : textColor,
           textTransform: 'uppercase',
-          textAlign: 'center'
+          textAlign: 'center',
+          whiteSpace: 'nowrap'
         }}
       >
         {chars.map((char, i) => (
