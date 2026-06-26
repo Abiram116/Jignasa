@@ -340,8 +340,8 @@ img, svg { display: block; }
   border-radius: var(--r-pill);
   font-size: 0.7rem;
   font-weight: 500;
-  border: 1px solid var(--border-2);
-  background: var(--surface);
+  border: none;
+  background: transparent;
   letter-spacing: 0.01em;
   transition: all var(--t-fast) var(--ease);
 }
@@ -401,9 +401,9 @@ img, svg { display: block; }
   width: 100%;
   padding: 0.55rem 0.8rem;
   border-radius: var(--r-md);
-  background: var(--indigo-glow);
-  border: 1px solid var(--indigo-rim);
-  color: var(--indigo-300);
+  background: transparent;
+  border: none;
+  color: var(--text-2);
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -422,11 +422,7 @@ img, svg { display: block; }
 }
 
 .btn-new-chat:hover {
-  background: rgba(99,102,241,0.2);
-  border-color: rgba(99,102,241,0.5);
-  color: var(--indigo-200);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(99,102,241,0.2);
+  color: var(--indigo-300);
 }
 .btn-new-chat:hover::before { opacity: 1; }
 
@@ -440,7 +436,7 @@ img, svg { display: block; }
   padding: 0.45rem 0.8rem;
   border-radius: var(--r-md);
   background: transparent;
-  border: 1px solid var(--border-2);
+  border: none;
   color: var(--text-3);
   font-size: 0.74rem;
   font-weight: 400;
@@ -448,9 +444,7 @@ img, svg { display: block; }
   transition: all var(--t-fast) var(--ease);
 }
 .btn-home:hover {
-  background: var(--hover);
-  border-color: var(--border-3);
-  color: var(--text-2);
+  color: var(--text-1);
 }
 
 /* Conversation list */
@@ -484,8 +478,8 @@ img, svg { display: block; }
 .conv-item:hover { background: var(--hover); }
 
 .conv-item.active {
-  background: var(--indigo-glow);
-  border: 1px solid rgba(99,102,241,0.15);
+  background: transparent;
+  border: none;
 }
 
 .conv-item-btn {
@@ -515,10 +509,13 @@ img, svg { display: block; }
 }
 
 .conv-item.active .conv-item-btn {
-  color: var(--indigo-300);
+  color: var(--text-1);
   font-weight: 500;
 }
-.conv-item.active .conv-item-btn::before { color: var(--indigo-400); }
+.conv-item.active .conv-item-btn::before {
+  content: '•';
+  color: var(--indigo-400);
+}
 .conv-item:hover .conv-item-btn { color: var(--text-2); }
 .conv-item:hover .conv-item-btn::before { color: var(--text-3); }
 
@@ -1751,7 +1748,7 @@ tr:last-child td { border-bottom: none; }
   padding: 0.45rem 0.8rem;
   border-radius: var(--r-md);
   background: transparent;
-  border: 1px solid var(--border-1);
+  border: none;
   color: var(--text-3);
   font-size: 0.72rem;
   font-weight: 400;
@@ -1760,8 +1757,6 @@ tr:last-child td { border-bottom: none; }
 }
 
 .btn-cost-calc:hover:not(:disabled) {
-  background: rgba(245,158,11,0.06);
-  border-color: rgba(245,158,11,0.25);
   color: var(--ember-400);
 }
 
