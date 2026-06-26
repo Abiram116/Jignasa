@@ -64,6 +64,7 @@ export function HorizontalScroller({ steps, onEvalLoaded }: HorizontalScrollerPr
     const tl = gsap.timeline({
       scrollTrigger: {
         trigger: containerRef.current,
+        scroller: '#root',
         start: 'top top',
         end: '+=250%',
         pin: true,
