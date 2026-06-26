@@ -987,28 +987,18 @@ img, svg { display: block; }
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
 
 /* Live markdown during streaming — suppress flicker by letting React MD render */
+@keyframes stream-pulse {
+  0% { opacity: 0.85; filter: blur(0.5px); }
+  50% { opacity: 1; filter: blur(0px); text-shadow: 0 0 12px rgba(255,255,255,0.15); }
+  100% { opacity: 0.85; filter: blur(0.5px); }
+}
+
 .md-streaming {
   position: relative;
+  animation: stream-pulse 1.2s ease-in-out infinite;
 }
 .md-streaming > div > *:last-child {
   display: inline;
-}
-
-/* Blinking cursor after streaming content */
-.stream-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: var(--indigo-400);
-  border-radius: 1px;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: cursor-blink 0.75s ease-in-out infinite;
-}
-
-@keyframes cursor-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
 }
 
 /* Thinking indicator */

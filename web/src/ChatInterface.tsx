@@ -306,7 +306,6 @@ function MarkdownContent({ content, isStreaming = false }: { content: string; is
       >
         {content}
       </ReactMarkdown>
-      {isStreaming && <span className="stream-cursor" />}
     </div>
   )
 }
