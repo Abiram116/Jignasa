@@ -1,8 +1,45 @@
 import { useEffect, useRef } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
+import ShinyText from './ShinyText'
+import BlurText from './BlurText'
+import ScrollFloat from './ScrollFloat'
+import { MagicBentoGlow } from './MagicBentoGlow'
+import { SmoothScroll } from './SmoothScroll'
+import { StaggerReveal } from './ScrollReveal'
+import { StickyPipeline } from './StickyPipeline'
+import { EvalResultsSection } from './EvalResultsSection'
 
 interface HomePageProps {
   onEnter: () => void
   isFirstLoad?: boolean
+}
+
+/* ── Framer Motion hero reveal — each element gets this wrapper ── */
+function HeroReveal({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode
+  delay?: number
+  className?: string
+}) {
+  const reduce = useReducedMotion()
+  if (reduce) return <div className={className}>{children}</div>
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0, y: 28, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      transition={{
+        duration: 1.1,
+        delay,
+        ease: [0.16, 1, 0.3, 1],
+      }}
+    >
+      {children}
+    </motion.div>
+  )
 }
 
 /* ── Star field with shooting stars + coloured star varieties ── */
@@ -17,15 +54,14 @@ function StarField() {
 
     let animId: number
 
-    // Color palette for stars — mostly white-blue with occasional vivid specks
     const STAR_COLORS: [number, number, number][] = [
-      [200, 210, 255], // default cool-white
       [200, 210, 255],
       [200, 210, 255],
-      [34,  211, 238], // cyan
-      [251, 113, 133], // rose
-      [251, 191,  36], // amber
-      [167, 139, 250], // violet
+      [200, 210, 255],
+      [34,  211, 238],
+      [251, 113, 133],
+      [251, 191,  36],
+      [167, 139, 250],
     ]
 
     const stars: {
@@ -40,7 +76,6 @@ function StarField() {
     resize()
     window.addEventListener('resize', resize)
 
-    // Seed 280 stars
     for (let i = 0; i < 280; i++) {
       const colorIdx = Math.floor(Math.random() * STAR_COLORS.length)
       stars.push({
@@ -58,7 +93,6 @@ function StarField() {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       t += 0.008
 
-      /* ── Stars ── */
       for (const s of stars) {
         const pulse = Math.sin(t * s.speed * 800 + s.x) * 0.3 + 0.7
         ctx.beginPath()
@@ -103,7 +137,7 @@ const features = [
     icon: '🧠',
     iconClass: 'indigo',
     title: 'PDF RAG with HyDE',
-    desc: 'Queries your documents using Hypothetical Document Embedding — generating what the answer should look like, then finding real chunks that match. Far smarter than keyword search.',
+    desc: 'Queries your documents using Hypothetical Document Embedding: it generates what the answer should look like, then finds real chunks that match. Far smarter than keyword search.',
     badge: 'Powered by FAISS + BGE',
     badgeColor: 'var(--indigo-400)',
   },
@@ -111,7 +145,7 @@ const features = [
     icon: '🌐',
     iconClass: 'cyan',
     title: 'Live web search',
-    desc: 'Pulls from DuckDuckGo in real-time when you ask about current events, recent news, or anything beyond your documents — no API key needed.',
+    desc: 'Pulls from DuckDuckGo in real-time when you ask about current events, recent news, or anything beyond your documents. No API key needed.',
     badge: 'DuckDuckGo, no tracking',
     badgeColor: '#22d3ee',
   },
@@ -119,7 +153,7 @@ const features = [
     icon: '⚡',
     iconClass: 'ember',
     title: 'Hybrid synthesis',
-    desc: 'Combines document context and web results concurrently — parallel threads, single coherent answer. Cites both `[Doc p.4]` and `[Web 2]` in one response.',
+    desc: 'Combines document context and web results concurrently: parallel threads, one coherent answer. Cites both `[Doc p.4]` and `[Web 2]` in the same response.',
     badge: 'Concurrent retrieval',
     badgeColor: 'var(--ember-400)',
   },
@@ -135,16 +169,16 @@ const features = [
     icon: '💾',
     iconClass: 'rose',
     title: 'Prompt caching',
-    desc: 'Repeated queries return instantly from SQLite cache — 7 days for docs, 6 hours for web. Token stats and cached flag persist across page reloads.',
+    desc: 'Repeated queries return instantly from SQLite cache: 7 days for docs, 6 hours for web. Token stats and the cached flag persist across page reloads.',
     badge: 'SQLite WAL',
     badgeColor: '#fb7185',
   },
   {
     icon: '📊',
     iconClass: 'sage',
-    title: 'Retrieval evaluation',
-    desc: 'Built-in benchmarking suite measuring Hit@k, MRR, nDCG, and more — no LLM calls needed. Track quality across index versions.',
-    badge: 'Hit@k · MRR · nDCG',
+    title: 'Measured, not just claimed',
+    desc: 'Retrieval is benchmarked with Hit@k, MRR, and nDCG. Generated answers are scored with RAGAS for faithfulness and relevancy. See the live results below.',
+    badge: 'Hit@k · MRR · RAGAS',
     badgeColor: 'var(--sage-400)',
   },
 ]
@@ -152,7 +186,7 @@ const features = [
 const steps = [
   {
     title: 'Your message arrives',
-    desc: 'Guardrails check length and block injection patterns. The system classifies intent — casual, web, or document — or you override with the mode selector.',
+    desc: 'Guardrails check length and block injection patterns. The system classifies intent (casual, web, or document), or you override with the mode selector.',
     tags: ['Guardrails', 'Intent classifier', 'Mode override'],
     color: 'var(--indigo-400)',
   },
@@ -164,7 +198,7 @@ const steps = [
   },
   {
     title: 'Query transformation',
-    desc: 'Short queries go straight to FAISS. Conversational ones rewrite via LLM. Then HyDE generates a hypothetical passage — its embedding often matches real chunks far better than the raw question.',
+    desc: 'Short queries go straight to FAISS. Conversational ones rewrite via LLM. Then HyDE generates a hypothetical passage, since its embedding often matches real chunks far better than the raw question.',
     tags: ['Query rewrite', 'HyDE', 'Dynamic routing'],
     color: '#a78bfa',
   },
@@ -176,7 +210,7 @@ const steps = [
   },
   {
     title: 'Qwen generates, token by token',
-    desc: 'The LLM receives system prompt, prior conversation turns, and grounded context. It streams each token over SSE — you see the answer build live, with sources collapsed below.',
+    desc: 'The LLM receives system prompt, prior conversation turns, and grounded context. It streams each token over SSE, so you see the answer build live, with sources collapsed below.',
     tags: ['Ollama SSE', 'Chat memory', 'Source attribution'],
     color: 'var(--sage-400)',
   },
@@ -187,6 +221,7 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
 
   return (
     <div className={`homepage ${isFirstLoad ? 'first-load' : ''}`}>
+      <SmoothScroll />
       <StarField />
       <AuroraLayer />
 
@@ -199,29 +234,38 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
 
       {/* ── Hero ── */}
       <section className="hero">
-        {/* Eyebrow */}
-        <div className="hero-eyebrow">
+        {/* Eyebrow — first to appear */}
+        <HeroReveal delay={0.15} className="hero-eyebrow">
           <span className="eyebrow-dot" />
-          Fully local · Privacy-first · Open source
-        </div>
+          <ShinyText text="Fully local · Privacy-first · Open source" color="var(--text-2)" />
+        </HeroReveal>
 
-        {/* Headline */}
-        <div className="hero-headline">
+        {/* Headline — BlurText runs its own per-letter reveal */}
+        <HeroReveal delay={0.3} className="hero-headline">
           <h1>
-            Ask anything.
-            <span className="headline-accent">Know everything.</span>
+            <BlurText text="Ask anything." animateBy="letters" delay={55} startDelay={0} />
+            <BlurText
+              text="Know everything."
+              as="div"
+              className="headline-accent"
+              animateBy="letters"
+              delay={55}
+              startDelay={700}
+              direction="bottom"
+            />
           </h1>
-        </div>
+        </HeroReveal>
 
         {/* Subtitle */}
-        <p className="hero-subtitle">
-          Jignasa — <em>the seeker</em> in Sanskrit — is an AI agent that reads your PDFs,
-          searches the live web, and converses naturally. All running on your machine,
-          with no data ever leaving it.
-        </p>
+        <HeroReveal delay={0.6} className="hero-subtitle">
+          <p>
+            Jignasa, <em><BlurText text="the seeker" animateBy="words" delay={120} /></em> in Sanskrit, reads your PDFs,
+            searches the live web, and converses naturally, all on your machine.
+          </p>
+        </HeroReveal>
 
         {/* CTA */}
-        <div className="hero-actions">
+        <HeroReveal delay={0.8} className="hero-actions">
           <button className="btn-cta-primary" onClick={onEnter}>
             Start a conversation
             <span style={{ fontSize: '1.1rem' }}>→</span>
@@ -232,10 +276,10 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
           >
             See how it works
           </button>
-        </div>
+        </HeroReveal>
 
         {/* Mode pills */}
-        <div className="hero-modes">
+        <HeroReveal delay={1.0} className="hero-modes">
           {[
             { icon: '✦', label: 'Casual chat',  color: '#c084fc', glow: 'rgba(192,132,252,0.2)' },
             { icon: '📄', label: 'PDF RAG',      color: '#60a5fa', glow: 'rgba(96,165,250,0.2)'  },
@@ -251,47 +295,37 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
               <span style={{ color: m.color, fontWeight: 600 }}>{m.label}</span>
             </div>
           ))}
-        </div>
+        </HeroReveal>
 
-        {/* Scroll hint — now glowing */}
-        <div
-          className="scroll-hint"
-          onClick={() => featuresRef.current?.scrollIntoView({ behavior: 'smooth' })}
-        >
-          <span className="scroll-arrow">↓</span>
-          <span>Discover</span>
-        </div>
+        {/* Scroll hint */}
+        <HeroReveal delay={1.3}>
+          <div
+            className="scroll-hint"
+            onClick={() => featuresRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          >
+            <span className="scroll-arrow">↓</span>
+            <span>Discover</span>
+          </div>
+        </HeroReveal>
       </section>
 
-      {/* ── Stats bar ── */}
-      <div className="stats-bar">
-        <div className="stats-grid">
-          {[
-            { num: '2040',  label: 'chunks indexed',  cls: 'accent' },
-            { num: '4',     label: 'knowledge PDFs',  cls: 'cyan'   },
-            { num: '0',     label: 'cloud calls',     cls: 'sage'   },
-            { num: '100%',  label: 'local inference', cls: 'rose'   },
-          ].map((s) => (
-            <div className="stat-item" key={s.label}>
-              <span className={`stat-num ${s.cls}`}>{s.num}</span>
-              <span className="stat-label">{s.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* ── Features ── */}
-      <section className="features-section" ref={featuresRef}>
+      <section className="features-section bento-section" ref={featuresRef}>
+        <MagicBentoGlow gridSelector=".features-section" />
         <p className="section-eyebrow">Capabilities</p>
-        <h2 className="section-title">Built for depth, not just speed</h2>
+        <ScrollFloat containerClassName="section-title">Built for depth, not just speed</ScrollFloat>
         <p className="section-lead">
           Every part of the retrieval pipeline was designed to get the best answer
           from your documents, not just the fastest one.
         </p>
 
-        <div className="feature-grid">
-          {features.map((f) => (
-            <div className="feature-card" key={f.title}>
+        <StaggerReveal
+          className="feature-grid feature-grid-bento"
+          itemClassName={(_item, i) => `feature-card${[0, 3, 4].includes(i) ? ' feature-card-wide' : ''}`}
+          staggerMs={70}
+          items={features.map((f) => ({ key: f.title, f }))}
+          renderItem={({ f }) => (
+            <>
               <div className={`feature-icon ${f.iconClass}`}>{f.icon}</div>
               <h3>{f.title}</h3>
               <p>{f.desc}</p>
@@ -299,86 +333,39 @@ export default function HomePage({ onEnter, isFirstLoad = true }: HomePageProps)
                 <span style={{ opacity: 0.5 }}>▸</span>
                 {f.badge}
               </div>
-            </div>
-          ))}
-        </div>
+            </>
+          )}
+        />
       </section>
 
       {/* ── How it works ── */}
       <section className="how-section">
         <p className="section-eyebrow">Pipeline</p>
-        <h2 className="section-title">What happens when you hit send</h2>
+        <ScrollFloat containerClassName="section-title">What happens when you hit send</ScrollFloat>
         <p className="section-lead">
           Five stages, each designed to either short-circuit for speed
           or deepen for quality.
         </p>
 
-        <div className="steps-list">
-          {steps.map((s, i) => (
-            <div className="step-item" key={s.title}>
-              <div className="step-line-col">
-                <div className="step-num" style={{ color: s.color, borderColor: `${s.color}33`, boxShadow: `0 0 12px ${s.color}22` }}>{i + 1}</div>
-                {i < steps.length - 1 && <div className="step-connector" style={{ background: `linear-gradient(180deg, ${s.color}44 0%, transparent 100%)` }} />}
-              </div>
-              <div className="step-content">
-                <h3>{s.title}</h3>
-                <p>{s.desc}</p>
-                <div className="step-tags">
-                  {s.tags.map((tag) => (
-                    <span className="step-tag" key={tag} style={{ borderColor: `${s.color}22`, color: s.color }}>{tag}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <StickyPipeline steps={steps} />
       </section>
 
+      {/* ── Evaluation results ── */}
+      <EvalResultsSection />
+
       {/* ── Agent manifesto ── */}
-      <section style={{
-        position: 'relative', zIndex: 1,
-        padding: '4rem 2rem 5rem',
-        maxWidth: 700, margin: '0 auto', textAlign: 'center',
-      }}>
-        <div style={{
-          background: 'var(--surface)',
-          border: '1px solid var(--border-2)',
-          borderRadius: 'var(--r-xl)',
-          padding: '2.5rem',
-          position: 'relative',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'radial-gradient(circle at 50% 0%, rgba(99,102,241,0.08) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }} />
-          <div style={{
-            fontSize: '2.5rem', marginBottom: '1rem',
-            filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.6))',
-            animation: 'manifesto-glow 3s ease-in-out infinite',
-          }}>✦</div>
-          <blockquote style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: 'clamp(1rem, 2vw, 1.3rem)',
-            fontWeight: 600,
-            color: 'var(--text-1)',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.5,
-            marginBottom: '1rem',
-          }}>
-            "जिज्ञासा" — the desire to know, to seek, to understand deeply.
-          </blockquote>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+      <section className="manifesto-section">
+        <div className="manifesto-box">
+          <div className="manifesto-glow-bg" />
+          <div className="manifesto-sparkle">✦</div>
+          <p className="manifesto-devanagari">जिज्ञासा</p>
+          <p className="manifesto-gloss">the desire to know, to seek, to understand deeply</p>
+          <p className="manifesto-body">
             Jignasa isn't a chatbot. It's an agent that actively retrieves, synthesises,
-            and reasons — not just autocompletes. Every response is grounded in real
+            and reasons, not just autocompletes. Every response is grounded in real
             sources: your PDFs, the live web, or both at once.
           </p>
-          <button
-            className="btn-cta-primary"
-            onClick={onEnter}
-            style={{ marginTop: '1.5rem', display: 'inline-flex' }}
-          >
+          <button className="btn-cta-primary manifesto-cta" onClick={onEnter}>
             Begin seeking →
           </button>
         </div>
