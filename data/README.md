@@ -4,7 +4,7 @@
 |---|---|---|---|
 | `evaluation_set.json` | v1, 80 questions. Checks **retrieval only**: "did we pull the right PDF for this question?" | No | `scripts/generate_evaluation_set.py` |
 | `evaluation_set_v2.json` | v2, ~32 questions, each grounded in one specific chunk (source + page + section attached). Built for **generation-quality** checks (RAGAS: faithfulness, answer relevancy, etc.), not just retrieval. | Yes — LLM-drafted, marked `needs_review: true` until a human skims them | `pipeline/04_generate_eval_set.py` |
-| `evaluations/` | Saved snapshots of past evaluation *runs* (CSV + manifest), created when you click "save" in the UI's Evaluation tab. Not a question set — it's historical results. | n/a | the running API, on demand |
+| `evaluations/` | Saved snapshots of past evaluation *runs* (CSV + manifest + RAGAS summaries). Not a question set — it's historical results, read by the homepage's live "Measured against real questions" section via `GET /api/evaluation/summary`. See `evaluations/README.md`. | n/a | `scripts/evaluate_rag_metrics.py`, `scripts/evaluate_ragas.py`, or `POST /api/evaluation/save` |
 
 If you're about to run a new kind of eval and aren't sure which question
 set to point it at: retrieval-only metrics → `evaluation_set.json`;

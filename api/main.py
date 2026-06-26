@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Iterator
 
@@ -175,13 +176,15 @@ RESPONSE STYLE:
 - For explanations: lead with the core idea, then elaborate
 - For math/logic: show your working clearly
 - For opinions or subjective topics: be honest and balanced
-- Keep responses concise unless depth is explicitly needed"""
+- Keep responses concise unless depth is explicitly needed
+- If you're not actually confident about a specific factual claim (a name, date, statistic, or niche detail), say so plainly rather than guessing with false confidence — a hedged "I'm not certain, but..." is more useful than a fluent-sounding wrong answer"""
 
 RAG_SYSTEM = """You are Jignasa, a precise document assistant that answers questions from the provided document context.
 
 CORE RULES:
 - Answer ONLY from the context provided below
 - If the answer is not in the context, say exactly: "I don't have enough information in the documents to answer that."
+- If the context only partially covers the question, say clearly what IS supported by the context and what isn't, rather than stretching thin evidence into a complete-sounding answer
 - Never hallucinate facts, statistics, or quotes not present in the context
 - Cite sources naturally when referencing specific documents
 
@@ -199,9 +202,11 @@ WEB_SYSTEM = """You are Jignasa, an AI assistant with access to live web search 
 
 CORE RULES:
 - Use search results as your primary source — cite them as [1], [2] etc. inline
+- Before citing a source number, re-check that its actual title/snippet genuinely supports the specific claim you're attaching it to. Never attach a citation number to a claim that source doesn't actually contain — a wrong citation is worse than no citation
 - Synthesize information across sources rather than just repeating one
 - Acknowledge when sources conflict or are unclear
 - Be factual and accurate — do not add information not in the results
+- If the results are tangential, weak, or don't clearly identify a single answer (common for "what was that thing called" recall questions), do NOT force a confident single answer from a weak match. Instead say the results aren't conclusive and list the 2-3 most plausible candidates from what the results actually support, so the user can recognize the right one — this is more useful than committing to a guess that sounds certain but isn't grounded
 
 FORMATTING RULES:
 - Use **bold** for key facts and important terms
@@ -215,10 +220,12 @@ FORMATTING RULES:
 HYBRID_SYSTEM = """You are Jignasa, a hybrid assistant that synthesizes answers from both local documents and live web search results.
 
 CORE RULES:
-- Cite document sources as [doc: filename p.N] and web sources as [web: N]
+- Cite document sources exactly as they appear in the context, e.g. [filename p.N], and web sources as [N] (e.g. [1], [2])
+- Before attaching a citation to a claim, re-check that the cited source actually supports that specific claim — never attach a citation number or filename to something it doesn't really say
 - Prioritize document context for domain-specific questions; web for current/live information
 - Acknowledge when sources complement or contradict each other
 - Never hallucinate — only use what's in the provided context
+- If both the document context and web results are weak, tangential, or only partially answer the question, say so directly rather than forcing a confident-sounding answer out of thin combined evidence — present the best-supported partial answer or candidates instead of a single overreaching claim
 
 FORMATTING RULES:
 - Use **bold** for key points and important terms
@@ -374,16 +381,9 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
             answer = "".join(answer_parts).strip()
             latency_ms = int((time.monotonic() - stream_start) * 1000)
-            db.append_message(
-                session_id, "assistant", answer,
-                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="casual", cached=False, latency_ms=latency_ms,
+            yield from _finish_response(
+                session_id, answer, prompt_tokens, completion_tokens, "casual", latency_ms,
             )
-            yield _sse({
-                "type": "done", "content": answer,
-                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
-                "cached": False, "latency_ms": latency_ms,
-            })
 
         # ── WEB ─────────────────────────────────────────────────────
         elif resolved_mode == "web":
@@ -416,18 +416,13 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 return
 
             answer = "".join(answer_parts).strip()
+            answer = _linkify_web_citations(answer, results)
             latency_ms = int((time.monotonic() - stream_start) * 1000)
-            db.append_message(
-                session_id, "assistant", answer,
-                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="web", web_sources=results, cached=False, latency_ms=latency_ms,
-            )
             set_cached(body.message, "web", "web", answer, [], results, prompt_tokens, completion_tokens)
-            yield _sse({
-                "type": "done", "content": answer,
-                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
-                "cached": False, "latency_ms": latency_ms,
-            })
+            yield from _finish_response(
+                session_id, answer, prompt_tokens, completion_tokens, "web", latency_ms,
+                web_sources=results,
+            )
 
         # ── RAG ─────────────────────────────────────────────────────
         elif resolved_mode == "docs":
@@ -479,17 +474,11 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
             answer = "".join(answer_parts).strip()
             latency_ms = int((time.monotonic() - stream_start) * 1000)
-            db.append_message(
-                session_id, "assistant", answer,
-                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="rag", sources=hits, cached=False, latency_ms=latency_ms,
-            )
             set_cached(body.message, "docs", "rag", answer, hits, [], prompt_tokens, completion_tokens)
-            yield _sse({
-                "type": "done", "content": answer,
-                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
-                "cached": False, "latency_ms": latency_ms,
-            })
+            yield from _finish_response(
+                session_id, answer, prompt_tokens, completion_tokens, "rag", latency_ms,
+                sources=hits,
+            )
 
         # ── HYBRID ──────────────────────────────────────────────────
         elif resolved_mode == "hybrid":
@@ -508,13 +497,15 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                     yield _sse({"type": "error", "message": f"RAG error: {str(exc)}"})
                     return
 
+                web_degraded = False
                 try:
                     results = web_future.result()
                 except Exception:
                     results = []
+                    web_degraded = True
 
             yield _sse({"type": "sources", "sources": hits})
-            yield _sse({"type": "web_sources", "sources": results})
+            yield _sse({"type": "web_sources", "sources": results, "degraded": web_degraded})
 
             doc_snippets = []
             for h in hits:
@@ -523,7 +514,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
             web_snippets = []
             for i, r in enumerate(results, start=1):
-                web_snippets.append(f"[web: {i}] {r['title']}\nURL: {r['url']}\n{r['snippet']}")
+                web_snippets.append(f"[{i}] {r['title']}\nURL: {r['url']}\n{r['snippet']}")
             web_context = "\n\n".join(web_snippets) or "No web search results were found."
 
             hybrid_user_prompt = f"""Synthesize information from both the document context and web search results below to answer the question.
@@ -563,18 +554,13 @@ Answer:"""
                 return
 
             answer = "".join(answer_parts).strip()
+            answer = _linkify_web_citations(answer, results)
             latency_ms = int((time.monotonic() - stream_start) * 1000)
-            db.append_message(
-                session_id, "assistant", answer,
-                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                mode="hybrid", sources=hits, web_sources=results, cached=False, latency_ms=latency_ms,
-            )
             set_cached(body.message, "hybrid", "hybrid", answer, hits, results, prompt_tokens, completion_tokens)
-            yield _sse({
-                "type": "done", "content": answer,
-                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
-                "cached": False, "latency_ms": latency_ms,
-            })
+            yield from _finish_response(
+                session_id, answer, prompt_tokens, completion_tokens, "hybrid", latency_ms,
+                sources=hits, web_sources=results,
+            )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -620,3 +606,68 @@ def save_evaluation(body: SaveEvalRequest) -> dict:
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def _linkify_web_citations(answer: str, web_sources: list[dict]) -> str:
+    """
+    Replace [N] citations with clickable markdown links [[N]](url).
+
+    Done server-side, before caching/persisting, so the converted version
+    is what gets stored and returned everywhere -- live stream, cache hit,
+    and reload from history all see the same linked text. Previously this
+    conversion only happened in the frontend after a live stream finished,
+    so it was lost the moment a conversation was reloaded (the DB had only
+    ever stored the raw [N] text).
+    """
+    if not web_sources:
+        return answer
+
+    def replace(m: re.Match[str]) -> str:
+        idx = int(m.group(1)) - 1
+        if 0 <= idx < len(web_sources):
+            return f"[[{m.group(1)}]]({web_sources[idx]['url']})"
+        return m.group(0)
+
+    return re.sub(r"\[(\d+)\]", replace, answer)
+
+
+def _finish_response(
+    session_id: str,
+    answer: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    mode: str,
+    latency_ms: int,
+    *,
+    sources: list | None = None,
+    web_sources: list | None = None,
+) -> Iterator[str]:
+    """
+    Persist the assistant's answer and yield the terminal `done` event.
+
+    Why this exists: previously each mode branch called db.append_message()
+    directly with no error handling. If that write failed (SQLite locked,
+    disk issue) after tokens had already streamed to the client, the
+    exception propagated out of the generator and the client never received
+    a `done` or `error` event -- just a dead connection with no signal of
+    what happened. This wraps the persist step so a failure still produces
+    a terminal SSE event instead of silently hanging the stream.
+    """
+    try:
+        db.append_message(
+            session_id, "assistant", answer,
+            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+            mode=mode, sources=sources, web_sources=web_sources,
+            cached=False, latency_ms=latency_ms,
+        )
+    except Exception as exc:
+        yield _sse({
+            "type": "error",
+            "message": f"Response generated but could not be saved: {exc}",
+        })
+        return
+    yield _sse({
+        "type": "done", "content": answer,
+        "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+        "cached": False, "latency_ms": latency_ms,
+    })

@@ -12,12 +12,13 @@ Most "AI chat with your docs" demos are a thin call to a hosted API. Jignasa run
 
 ## Highlights
 
-- **Modern chat UI** — ChatGPT-style layout, live token streaming, quoting, message editing, code blocks with copy buttons
+- **Modern chat UI** — minimalist, ChatGPT-style layout, live token streaming, quoting, message editing, code blocks with copy buttons, collapsible sidebar
 - **Smart mode routing** — auto-detects casual chat vs. document Q&A vs. web search vs. hybrid, or pick a mode manually
 - **Local RAG pipeline** — Docling-parsed PDFs, structure-aware chunking (page + section metadata preserved), FAISS retrieval, query rewriting + HyDE for better recall
-- **Live web search** — grounded answers with clickable citations, no API key required
+- **Live web search** — grounded answers with clickable citations that survive a page reload, no API key required
 - **Cost & token tracking** — see exactly what each response would cost on commercial APIs (GPT-4o, Claude, Gemini, etc.) even though you're paying $0 running locally
-- **Built-in evaluation** — retrieval benchmarking against a curated question set, with results you can save and compare over time
+- **Measured, not just claimed** — retrieval (Hit@k, MRR, nDCG) and generation quality (RAGAS) are both benchmarked against real questions, shown live on the homepage
+- **A homepage that's actually designed** — distinctive type (Fraunces + Devanagari), a real motion system (Motion/GSAP/Lenis), a signature visual moment rather than templated AI-generated defaults — see `web/README.md`
 
 ## Stack
 
@@ -50,13 +51,14 @@ Every response streams token-by-token over Server-Sent Events, with the backend 
 ```
 Jignasa/
 ├── api/             ← FastAPI backend (routing, retrieval, caching, streaming)
-├── web/             ← React frontend
+├── web/             ← React frontend (see web/README.md for the design system)
 ├── pipeline/        ← Builds the document index from PDFs (see pipeline/README.md)
 ├── rag_index/        ← Generated vector index (see rag_index/README.md)
 ├── knowledge-base/  ← Your source PDFs, not in git (see knowledge-base/README.md)
 ├── data/            ← Evaluation question sets & saved runs (see data/README.md)
 ├── scripts/         ← Evaluation utilities used by the API (see scripts/README.md)
 ├── archive/         ← Retired code, kept for reference (see archive/README.md)
+├── docs/            ← Technical deep-dive: architecture, prompts, a real debugging case study (see docs/TECHNICAL.md)
 └── run_all.sh       ← Start backend + frontend together
 ```
 
@@ -87,4 +89,4 @@ Drop your own PDFs into `knowledge-base/` before step 4 — see `knowledge-base/
 
 ---
 
-*Looking for implementation details — prompt formats, SSE event schema, caching internals, evaluation methodology? A deeper technical write-up is coming as the project matures. For now, the code itself (`api/`, `pipeline/`) is the source of truth, and each non-obvious folder has its own short README.*
+*Looking for implementation details — prompt formats, SSE event schema, the motion/scroll system, or a real debugging case study (a grounding-fidelity bug found, root-caused, and fixed with evidence)? See [`docs/TECHNICAL.md`](docs/TECHNICAL.md). Each non-obvious folder also has its own short README.*

@@ -45,7 +45,7 @@ export type ChatEvent =
   | { type: 'intent'; mode: ChatMode }
   | { type: 'cached'; is_cached: boolean }
   | { type: 'sources'; sources: Source[] }
-  | { type: 'web_sources'; sources: WebSource[] }
+  | { type: 'web_sources'; sources: WebSource[]; degraded?: boolean }
   | { type: 'ask_web_search'; message: string }
   | { type: 'token'; content: string }
   | { type: 'done'; content: string; prompt_tokens?: number; completion_tokens?: number; cached?: boolean; latency_ms?: number }

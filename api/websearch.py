@@ -1,6 +1,15 @@
 """
 Web search via DuckDuckGo (ddgs package, no API key required).
 Falls back gracefully if the package is not installed or search fails.
+
+Note: a query-rewrite step (reformulating the raw message before searching)
+was tried here and removed -- measured against a real failing example, it
+made retrieval *worse* (pushed the correct top result down in favor of
+SEO-spam pages) because DuckDuckGo already handled the raw conversational
+message well. The actual failure mode in that case was the LLM citing a
+source number that didn't match what it actually said -- a synthesis
+grounding problem, not a retrieval problem. See WEB_SYSTEM / HYBRID_SYSTEM
+in api/main.py for the prompt-side fix.
 """
 from __future__ import annotations
 

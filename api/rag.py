@@ -46,7 +46,8 @@ def index_status() -> dict:
 def load_index() -> tuple[faiss.IndexFlatIP, list[dict]]:
     if not index_ready():
         raise FileNotFoundError(
-            f"No index in `{RAG_INDEX}`. Run `rag_with_langchain.ipynb` first."
+            f"No index in `{RAG_INDEX}`. Run `pipeline/02_parse_and_chunk.py` "
+            "and `pipeline/03_build_index.py` first (see pipeline/README.md)."
         )
     index = faiss.read_index(str(INDEX_PATH))
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))

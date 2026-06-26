@@ -65,7 +65,7 @@ the crash that caused silent data-quality loss last time.
 ## Running it
 
 ```bash
-cd "RAG With LangChain"
+cd Jignasa   # repo root
 python3 pipeline/01_profile_corpus.py
 python3 pipeline/02_parse_and_chunk.py   # resumable; skips PDFs already chunked
 python3 pipeline/03_build_index.py

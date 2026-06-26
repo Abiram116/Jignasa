@@ -26,6 +26,8 @@ export interface Message {
   mode?: ChatMode
   sources?: Source[]
   webSources?: WebSource[]
+  /** True when hybrid mode's web search failed and degraded to docs-only */
+  webSearchDegraded?: boolean
   cached?: boolean
   latency_ms?: number
   /** Set when backend asks user whether to do a web search */
