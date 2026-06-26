@@ -1,63 +1,121 @@
-import { animate, useInView, useReducedMotion } from 'motion/react'
-import { useEffect, useRef } from 'react'
-
+import { useInView, useMotionValue, useSpring } from 'motion/react';
+import { useCallback, useEffect, useRef } from 'react';
 
 interface CountUpProps {
-  to: number
-  from?: number
-  duration?: number
-  startDelay?: number
-  className?: string
-  decimals?: number
+  to: number;
+  from?: number;
+  direction?: 'up' | 'down';
+  delay?: number;
+  duration?: number;
+  className?: string;
+  startWhen?: boolean;
+  separator?: string;
+  decimals?: number;
+  startDelay?: number; // legacy compat
+  onStart?: () => void;
+  onEnd?: () => void;
 }
 
 export default function CountUp({
   to,
   from = 0,
-  duration = 2.5, // nice slow smooth duration
-  startDelay = 400,
+  direction = 'up',
+  delay = 0,
+  duration = 2,
   className = '',
+  startWhen = true,
+  separator = '',
   decimals,
+  startDelay,
+  onStart,
+  onEnd
 }: CountUpProps) {
-  const ref = useRef<HTMLSpanElement>(null)
-  const reduce = useReducedMotion()
+  const ref = useRef<HTMLSpanElement>(null);
+  const motionValue = useMotionValue(direction === 'down' ? to : from);
   
-  // Use standard viewport intersection
-  const isInView = useInView(ref, { once: true, amount: 0.1 })
+  // Compat for startDelay in ms
+  const finalDelay = delay > 0 ? delay : (startDelay ? startDelay / 1000 : 0);
 
-  const maxDecimals = decimals ?? (() => {
-    const str = to.toString()
-    return str.includes('.') ? str.split('.')[1].length : 0
-  })()
+  const damping = 20 + 40 * (1 / duration);
+  const stiffness = 100 * (1 / duration);
 
-  // Set initial display value immediately
-  useEffect(() => {
-    if (ref.current) ref.current.textContent = from.toFixed(maxDecimals)
-  }, [from, maxDecimals])
+  const springValue = useSpring(motionValue, {
+    damping,
+    stiffness
+  });
 
-  // Run the smooth count animation once in view
-  useEffect(() => {
-    if (!isInView || !ref.current) return
-    const el = ref.current
+  const isInView = useInView(ref, { once: true, margin: '0px' });
 
-    if (reduce) {
-      el.textContent = to.toFixed(maxDecimals)
-      return
+  const getDecimalPlaces = (num: number) => {
+    const str = num.toString();
+
+    if (str.includes('.')) {
+      const decs = str.split('.')[1];
+
+      if (parseInt(decs) !== 0) {
+        return decs.length;
+      }
     }
 
-    const timeoutId = setTimeout(() => {
-      // Use Framer Motion's animate function for a buttery smooth ease-out
-      animate(from, to, {
-        duration,
-        ease: 'easeOut',
-        onUpdate: (value) => {
-          if (el) el.textContent = value.toFixed(maxDecimals)
+    return 0;
+  };
+
+  const maxDecimals = decimals ?? Math.max(getDecimalPlaces(from), getDecimalPlaces(to));
+
+  const formatValue = useCallback(
+    (latest: number) => {
+      const hasDecimals = maxDecimals > 0;
+
+      const options = {
+        useGrouping: !!separator,
+        minimumFractionDigits: hasDecimals ? maxDecimals : 0,
+        maximumFractionDigits: hasDecimals ? maxDecimals : 0
+      };
+
+      const formattedNumber = Intl.NumberFormat('en-US', options).format(latest);
+
+      return separator ? formattedNumber.replace(/,/g, separator) : formattedNumber;
+    },
+    [maxDecimals, separator]
+  );
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.textContent = formatValue(direction === 'down' ? to : from);
+    }
+  }, [from, to, direction, formatValue]);
+
+  useEffect(() => {
+    if (isInView && startWhen) {
+      if (typeof onStart === 'function') onStart();
+
+      const timeoutId = setTimeout(() => {
+        motionValue.set(direction === 'down' ? from : to);
+      }, finalDelay * 1000);
+
+      const durationTimeoutId = setTimeout(
+        () => {
+          if (typeof onEnd === 'function') onEnd();
         },
-      })
-    }, startDelay)
+        finalDelay * 1000 + duration * 1000
+      );
 
-    return () => clearTimeout(timeoutId)
-  }, [isInView, reduce, from, to, duration, maxDecimals, startDelay])
+      return () => {
+        clearTimeout(timeoutId);
+        clearTimeout(durationTimeoutId);
+      };
+    }
+  }, [isInView, startWhen, motionValue, direction, from, to, finalDelay, onStart, onEnd, duration]);
 
-  return <span className={className} ref={ref} />
+  useEffect(() => {
+    const unsubscribe = springValue.on('change', (latest) => {
+      if (ref.current) {
+        ref.current.textContent = formatValue(latest);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [springValue, formatValue]);
+
+  return <span className={className} ref={ref} />;
 }
