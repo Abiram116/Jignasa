@@ -338,7 +338,13 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
 
       {/* ── Agent manifesto ── */}
       <section className="manifesto-section">
-        <div className="manifesto-box">
+        <motion.div 
+          className="manifesto-box"
+          initial={{ opacity: 0, scale: 0.9, y: 40, filter: 'blur(8px)' }}
+          whileInView={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+          viewport={{ once: true, amount: 0.4 }}
+          transition={{ type: 'spring', bounce: 0, duration: 1.5 }}
+        >
           <div className="manifesto-glow-bg" />
           <div className="manifesto-sparkle">✦</div>
           <p className="manifesto-devanagari">जिज्ञासा</p>
@@ -351,7 +357,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
           <button className="btn-cta-primary manifesto-cta" onClick={onEnter}>
             Begin seeking →
           </button>
-        </div>
+        </motion.div>
       </section>
 
       {/* ── Footer ── */}

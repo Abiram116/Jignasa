@@ -2067,6 +2067,7 @@ tr:last-child td { border-bottom: none; }
   min-height: 100vh;
   padding: 2rem;
   text-align: center;
+  scroll-snap-align: center;
 }
 
 /* Eyebrow */
@@ -2286,6 +2287,11 @@ tr:last-child td { border-bottom: none; }
   padding: 5rem 2rem;
   max-width: 1100px;
   margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  scroll-snap-align: center;
 }
 
 .eval-results-section {
@@ -2294,6 +2300,11 @@ tr:last-child td { border-bottom: none; }
   padding: 6rem 2rem;
   max-width: 1100px;
   margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  scroll-snap-align: center;
 }
 
 .eval-results-groups {
@@ -2549,6 +2560,11 @@ tr:last-child td { border-bottom: none; }
   padding: 5rem 2rem;
   max-width: 900px;
   margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  scroll-snap-align: center;
 }
 
 .steps-list {
@@ -2718,7 +2734,12 @@ tr:last-child td { border-bottom: none; }
 .manifesto-section {
   position: relative;
   z-index: 1;
-  padding: 6rem 1.5rem 7rem;
+  padding: 6rem 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  scroll-snap-align: center;
 }
 
 .manifesto-box {
