@@ -17,6 +17,7 @@ from api.evaluation import (
     EVAL_DESCRIPTION,
     EVAL_TYPE,
     iter_evaluation,
+    load_evaluation_summary,
     load_saved_metrics,
     save_named_snapshot,
     stream_evaluation,
@@ -598,6 +599,12 @@ def run_eval(body: EvalRequest) -> StreamingResponse:
 @app.get("/api/evaluation/saved")
 def get_saved_evaluations() -> list[dict]:
     return load_saved_metrics()
+
+
+@app.get("/api/evaluation/summary")
+def get_evaluation_summary() -> dict:
+    """Read-only summary for the homepage: latest retrieval + RAGAS results."""
+    return load_evaluation_summary()
 
 
 @app.post("/api/evaluation/save")

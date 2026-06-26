@@ -46,21 +46,6 @@ export interface WebSource {
   snippet: string
 }
 
-export interface EvalSummary {
-  question_count: number
-  k: number
-  hit_at_k: number
-  recall_at_k: number
-  precision_at_k: number
-  mrr_at_k: number
-  ndcg_at_k: number
-  evaluated_at: string
-  elapsed_seconds: number
-  eval_type: string
-  eval_description: string
-  uses_llm: boolean
-}
-
 export interface SavedEval {
   name: string
   label: string
@@ -73,12 +58,18 @@ export interface SavedEval {
   eval_type?: string
 }
 
-export interface EvalProgress {
-  current: number
-  total: number
-  question: string
-  hit: boolean
-  expected_document: string
-  top_source: string | null
-  elapsed_seconds: number
+export interface RagasSummary {
+  question_count: number
+  faithfulness: number
+  answer_relevancy: number
+  context_precision: number
+  context_recall: number
+  judge_llm: string
+  embedding_model: string
+  evaluated_at: string
+}
+
+export interface EvaluationSummaryResponse {
+  retrieval: SavedEval | null
+  ragas: RagasSummary | null
 }
