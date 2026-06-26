@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Routes, Route, useNavigate } from 'react-router-dom'
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import HomePage from './HomePage'
 import ChatInterface from './ChatInterface'
 import { PreLoader } from './PreLoader'
@@ -7,7 +7,10 @@ import './index.css'
 
 export default function App() {
   const navigate = useNavigate()
-  const [preloaderComplete, setPreloaderComplete] = useState(false)
+  const location = useLocation()
+  
+  // Only show the preloader if the user initially lands on the home page
+  const [preloaderComplete, setPreloaderComplete] = useState(location.pathname !== '/')
 
   return (
     <>
