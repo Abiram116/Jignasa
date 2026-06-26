@@ -2418,9 +2418,11 @@ tr:last-child td { border-bottom: none; }
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  transition: background var(--t-fast) var(--ease);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
   position: relative;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--r-md);
   --glow-x: 50%;
   --glow-y: 50%;
   --glow-intensity: 0;
@@ -2439,7 +2441,10 @@ tr:last-child td { border-bottom: none; }
   transition: opacity var(--t-med) var(--ease);
 }
 
-.feature-card:hover { background: var(--deep); }
+.feature-card:hover { 
+  background: var(--deep); 
+  border-color: rgba(255, 255, 255, 0.08);
+}
 
 /* Magic-bento-style cursor glow (see MagicBentoGlow.tsx) */
 .feature-card::after {
