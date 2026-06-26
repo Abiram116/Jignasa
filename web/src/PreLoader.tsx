@@ -80,8 +80,8 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
             <motion.circle
               cx="24" cy="24" r="18"
               stroke="#fff"
-              strokeWidth={phase === 'expanding' ? 3 : 18}
-              fill="none"
+              strokeWidth={3}
+              fill="rgba(255,255,255,0)"
               strokeLinecap="round"
               strokeDasharray={113}
               initial={{ strokeDashoffset: 85, rotate: -90 }}
@@ -90,15 +90,16 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
                   ? { 
                       strokeDashoffset: 85, 
                       rotate: 270, 
+                      fill: "rgba(255,255,255,0)",
                       transition: { rotate: { repeat: Infinity, duration: 1, ease: "linear" } } 
                     }
                   : { 
                       strokeDashoffset: 0, 
                       rotate: 270,
-                      strokeWidth: 18,
+                      fill: "rgba(255,255,255,1)",
                       transition: { 
                         strokeDashoffset: { duration: 0.4, ease: "easeOut" },
-                        strokeWidth: { delay: 0.2, duration: 0.3, type: "spring", bounce: 0 },
+                        fill: { delay: 0.2, duration: 0.3, ease: "easeOut" },
                       } 
                     }
               }
