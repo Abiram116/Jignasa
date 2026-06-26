@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react'
+import type { Transition } from 'motion/react'
 
 interface Step {
   title: string
@@ -53,10 +54,10 @@ export function StickyPipeline({ steps }: { steps: Step[] }) {
           <motion.div
             className={`step-item step-item-${i % 2 === 0 ? 'left' : 'right'}`}
             key={s.title}
-            initial={{ opacity: 0, x: fromSide, scale: 0.96 }}
-            whileInView={{ opacity: 1, x: 0, scale: 1 }}
-            viewport={{ once: true, amount: 0.4 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, x: fromSide, scale: 0.95, filter: 'blur(4px)' }}
+            whileInView={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ type: 'spring', bounce: 0, duration: 1.0 } as Transition}
           >
             {content}
           </motion.div>

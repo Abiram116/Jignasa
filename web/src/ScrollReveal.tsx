@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react'
+import type { Transition } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 
 /**
@@ -37,9 +38,9 @@ export function ScrollReveal({
     return <div className={className}>{children}</div>
   }
 
-  const initial = { opacity: 0, y: 16 }
-  const animate = { opacity: 1, y: 0 }
-  const transition = { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] as const }
+  const initial = { opacity: 0, y: 24, filter: 'blur(4px)' }
+  const animate = { opacity: 1, y: 0, filter: 'blur(0px)' }
+  const transition: Transition = { type: 'spring', bounce: 0, duration: 1.0, delay }
 
   if (triggerOnMount) {
     return (
@@ -93,7 +94,8 @@ export function StaggerReveal<T extends { key: string }>({
     )
   }
 
-  const transition = { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const }
+  const initial = { opacity: 0, y: 24, filter: 'blur(4px)' }
+  const animate = { opacity: 1, y: 0, filter: 'blur(0px)' }
 
   return (
     <div className={className}>
@@ -102,9 +104,9 @@ export function StaggerReveal<T extends { key: string }>({
           <motion.div
             className={classFor(item, i)}
             key={item.key}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...transition, delay: (i * staggerMs) / 1000 }}
+            initial={initial}
+            animate={animate}
+            transition={{ type: 'spring', bounce: 0, duration: 1.0, delay: (i * staggerMs) / 1000 } as Transition}
           >
             {renderItem(item)}
           </motion.div>
@@ -112,14 +114,14 @@ export function StaggerReveal<T extends { key: string }>({
           <motion.div
             className={classFor(item, i)}
             key={item.key}
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2, root: rootRef }}
-            transition={{ ...transition, delay: (i * staggerMs) / 1000 }}
+            initial={initial}
+            whileInView={animate}
+            viewport={{ once: true, amount: 0.1, root: rootRef }}
+            transition={{ type: 'spring', bounce: 0, duration: 1.0, delay: (i * staggerMs) / 1000 } as Transition}
           >
             {renderItem(item)}
           </motion.div>
-        ),
+        )
       )}
     </div>
   )
