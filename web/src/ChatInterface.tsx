@@ -16,7 +16,6 @@ import {
   truncateConversation,
 } from './api'
 import type { ChatMode, Conversation, Message, Source, Status, WebSource } from './types'
-import { PreLoader } from './PreLoader'
 import './index.css'
 
 /* ── Inline SVG icons ──────────────────────────────────────────────── */
@@ -504,7 +503,6 @@ function CostCalculatorModal({
 export default function ChatInterface({ onBack }: { onBack: () => void }) {
   // App initialization states
   const [connectLoaded, setConnectLoaded] = useState(false)
-  const [preloaderComplete, setPreloaderComplete] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   
   const [status, setStatus] = useState<Status | null>(null)
@@ -978,17 +976,10 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     )
   }
 
-  const isAppReady = connectLoaded
 
   /* ── Render ── */
   return (
     <>
-      {!preloaderComplete && (
-        <PreLoader 
-          loaded={isAppReady} 
-          onComplete={() => setPreloaderComplete(true)} 
-        />
-      )}
       <div className="app">
         {/* ════ Sidebar ════ */}
         <AnimatePresence>
