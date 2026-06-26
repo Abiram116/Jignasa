@@ -136,7 +136,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
 
       if (titleRef.current) {
         const titleRect = titleRef.current.getBoundingClientRect();
-        const maxDist = titleRect.width / 2;
+        const maxDist = titleRect.width / 5; // Reduced radar detection range
 
         spansRef.current.forEach(span => {
           if (!span) return;
@@ -150,7 +150,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
           const d = dist(mouseRef.current, charCenter);
 
           const wdth = width ? Math.floor(getAttr(d, maxDist, 5, 200)) : 100;
-          const wght = weight ? Math.floor(getAttr(d, maxDist, 100, 900)) : 400;
+          const wght = weight ? Math.floor(getAttr(d, maxDist, 300, 900)) : 400; // Increased base weight from 100 to 300
           const italVal = italic ? getAttr(d, maxDist, 0, 1).toFixed(2) : 0;
           const alphaVal = alpha ? getAttr(d, maxDist, 0, 1).toFixed(2) : 1;
 
@@ -195,7 +195,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
   }, [fontFamily, fontUrl, textColor, strokeColor, strokeWidth]);
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'visible' }}>
       {styleElement}
       <h1
         ref={titleRef}
