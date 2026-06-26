@@ -187,7 +187,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
   const featuresRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className={`homepage ${triggerHeroAnimations ? 'first-load' : ''}`}>
+    <div className={`homepage ${triggerHeroAnimations ? 'hero-animate' : ''}`}>
       <SmoothScroll />
       <StarField />
       <AuroraLayer />
@@ -207,25 +207,17 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
           <ShinyText text="Fully local · Privacy-first · Open source" color="var(--text-2)" />
         </div>
 
-        {/* Headline — CSS cinematic-reveal delay 0.35s */}
+        {/* Headline */}
         <div className="hero-headline">
           <h1>
-            <BlurText text="Ask anything." animateBy="letters" delay={55} startDelay={0} />
-            <BlurText
-              text="Know everything."
-              as="div"
-              className="headline-accent"
-              animateBy="letters"
-              delay={55}
-              startDelay={700}
-              direction="bottom"
-            />
+            <span>Ask anything.</span>
+            <div className="headline-accent">Know everything.</div>
           </h1>
         </div>
 
-        {/* Subtitle — CSS cinematic-reveal delay 0.6s */}
+        {/* Subtitle */}
         <p className="hero-subtitle">
-          Jignasa, <em><BlurText text="the seeker" animateBy="words" delay={120} /></em> in Sanskrit, reads your PDFs,
+          Jignasa, <em>the seeker</em> in Sanskrit, reads your PDFs,
           searches the live web, and converses naturally, all on your machine.
         </p>
 

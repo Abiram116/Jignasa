@@ -54,7 +54,7 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
     >
       {/* ── Base Loading Screen ── */}
       <div className="preloader-base">
-        <div className="preloader-content">
+        <div className="preloader-content" style={{ animation: 'fade-in 0.3s ease-out 0.4s both' }}>
           <div className="preloader-spinner" />
           <div className="preloader-text">Waking up the agent...</div>
         </div>
