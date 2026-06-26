@@ -973,21 +973,34 @@ function App() {
     )
   }
 
+  const isAppReady = connectLoaded && evalLoaded
+
   /* ── Render ── */
   return (
-    <Routes>
-      <Route path="/" element={
-        <HomePage
-          isFirstLoad={isFirstLoad}
-          onEnter={() => {
-            setIsFirstLoad(false)
-            navigate('/chat')
-          }}
+    <>
+      {!preloaderComplete && (
+        <PreLoader 
+          loaded={isAppReady} 
+          onComplete={() => setPreloaderComplete(true)} 
         />
-      } />
-      <Route path="/chat" element={
-        <div className="app">
-          {/* ════ Sidebar ════ */}
+      )}
+      <Routes>
+        <Route path="/" element={
+          <HomePage
+            onEnter={() => {
+              if (!conversations.length) {
+                handleNewChat().then(() => navigate('/chat'))
+              } else {
+                navigate('/chat')
+              }
+            }}
+            onEvalLoaded={() => setEvalLoaded(true)}
+            triggerHeroAnimations={preloaderComplete}
+          />
+        } />
+        <Route path="/chat" element={
+          <div className="app">
+            {/* ════ Sidebar ════ */}
           <aside className="sidebar">
             <div className="sidebar-header">
               <div className="brand" onClick={() => navigate('/')} title="Back to home">
@@ -1238,6 +1251,7 @@ function App() {
         </div>
       } />
     </Routes>
+    </>
   )
 }
 
