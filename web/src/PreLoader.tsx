@@ -5,10 +5,9 @@ import './index.css'
 interface PreLoaderProps {
   loaded: boolean
   onComplete: () => void
-  onShrinkStart?: () => void
 }
 
-export function PreLoader({ loaded, onComplete, onShrinkStart }: PreLoaderProps) {
+export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
   const [phase, setPhase] = useState<'expanding' | 'completing' | 'shrinking' | 'done'>('expanding')
   const [minTimePassed, setMinTimePassed] = useState(false)
 
@@ -28,7 +27,6 @@ export function PreLoader({ loaded, onComplete, onShrinkStart }: PreLoaderProps)
       // Wait for the "Agent awoke" text and spinner-to-dot transition (0.6s)
       setTimeout(() => {
         setPhase('shrinking')
-        onShrinkStart?.()
         
         // Wait for the shrinking mask to reveal the app
         setTimeout(() => {
