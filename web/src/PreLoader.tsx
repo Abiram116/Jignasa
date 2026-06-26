@@ -29,21 +29,19 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
 
   if (phase === 'done') return null
 
-  // The wrapper mask that shrinks to reveal the app
   const wrapperVariants = {
     initial: { clipPath: 'circle(150% at 100% 100%)' },
     shrinking: { 
       clipPath: 'circle(0% at 0% 0%)',
-      transition: { duration: 1.0, ease: [0.76, 0, 0.24, 1] } 
+      transition: { duration: 1.0, ease: [0.76, 0, 0.24, 1] as const } 
     }
   }
 
-  // The colored layers that expand to cover the loader
   const layerVariants = {
     initial: { clipPath: 'circle(0% at 100% 100%)' },
     expanding: (delay: number) => ({
       clipPath: 'circle(150% at 100% 100%)',
-      transition: { duration: 0.8, delay, ease: [0.76, 0, 0.24, 1] }
+      transition: { duration: 0.8, delay, ease: [0.76, 0, 0.24, 1] as const }
     }),
   }
 
