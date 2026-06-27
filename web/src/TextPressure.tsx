@@ -218,7 +218,7 @@ const TextPressure: React.FC<TextPressureProps> = ({
         style={{
           display: 'flex',
           justifyContent: flex ? 'space-between' : 'center',
-          gap: flex ? '0' : '0.1em',
+          gap: flex ? '0' : '0.22em',
           fontFamily,
           fontSize: fontSize,
           lineHeight,
