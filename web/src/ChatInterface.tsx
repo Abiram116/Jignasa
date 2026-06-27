@@ -524,6 +524,11 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
 
   const [title, setTitle] = useState('New Chat')
   const [messages, setMessages] = useState<Message[]>([])
+  // Distinguishes "genuinely empty/new conversation" from "messages array
+  // is momentarily [] because we're mid-fetch after switching chats" --
+  // without this, messages.length === 0 is true in both cases and the
+  // empty-state prompts flash briefly for old conversations too.
+  const [messagesLoading, setMessagesLoading] = useState(false)
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
@@ -572,6 +577,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
         setMessages(data.messages)
       })
       .catch((e) => setError(String(e)))
+      .finally(() => setMessagesLoading(false))
   }, [sessionId])
 
   const handleNewChat = async () => {
@@ -1001,7 +1007,22 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                     <button
                       id={`conv-${c.session_id}`}
                       className="conv-item-btn"
-                      onClick={() => setSessionId(c.session_id)}
+                      onClick={() => {
+                        // Clear before switching, not after the fetch resolves --
+                        // otherwise the previous conversation's bubbles render
+                        // fresh inside the new container for a moment, then get
+                        // swapped for real data at the same keys, which Motion's
+                        // `layout` prop reads as a morph between old and new
+                        // content instead of a clean mount. Two different-looking
+                        // animations instead of one consistent entrance.
+                        // messagesLoading distinguishes this transient empty
+                        // state from a genuinely-new/empty conversation, so the
+                        // "Ask about your documents" prompts don't flash for
+                        // old conversations while their real messages load.
+                        setMessagesLoading(true)
+                        setMessages([])
+                        setSessionId(c.session_id)
+                      }}
                     >
                       {c.title || 'New Chat'}
                     </button>
@@ -1085,7 +1106,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                   )}
                 </div>
 
-                {messages.length === 0 && !streaming ? (
+                {messagesLoading ? (
+                  <div className="messages-loading-placeholder" />
+                ) : messages.length === 0 && !streaming ? (
                   <div className="empty-state">
                     <div className="empty-agent-ring">
                       <div className="empty-agent-icon">✦</div>
