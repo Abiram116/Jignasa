@@ -346,7 +346,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
           viewport={{ once: true, amount: 0.2 }}
           transition={{ type: 'spring', bounce: 0, duration: 1.5 }}
         >
-          <div style={{ position: 'relative', width: '95%', maxWidth: '1500px', height: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'relative', width: '90vw', maxWidth: '1000px', height: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TextPressure
               text="JIGNASA"
               fontFamily="Outfit, sans-serif"
