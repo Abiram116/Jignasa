@@ -2062,9 +2062,9 @@ tr:last-child td { border-bottom: none; }
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100vh;
   padding: 2rem;
   text-align: center;
-  scroll-snap-align: center;
 }
 
 /* Eyebrow */
@@ -2285,10 +2285,10 @@ tr:last-child td { border-bottom: none; }
   max-width: 1100px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  scroll-snap-align: center;
 }
 
 .eval-results-section {
@@ -2298,10 +2298,10 @@ tr:last-child td { border-bottom: none; }
   max-width: 1100px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  scroll-snap-align: center;
 }
 
 .eval-results-groups {
