@@ -450,6 +450,7 @@ img, svg { display: block; }
 /* Conversation list */
 .conv-section {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0.6rem;
   display: flex;
@@ -473,6 +474,7 @@ img, svg { display: block; }
   transition: background var(--t-fast) var(--ease);
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .conv-item:hover { background: var(--hover); }
