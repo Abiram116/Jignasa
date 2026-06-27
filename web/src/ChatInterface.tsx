@@ -1120,7 +1120,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                   >
                     {messages.map((m, i) => (
                       <MessageBubble
-                        key={i}
+                        key={`${sessionId}-${i}`}
                         msg={m}
                         isLast={i === messages.length - 1}
                         isStreaming={streaming}

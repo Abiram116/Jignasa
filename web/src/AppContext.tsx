@@ -20,7 +20,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [connectError, setConnectError] = useState('')
   const [status, setStatus] = useState<Status | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, _setSessionId] = useState<string | null>(null)
+
+  const setSessionId = useCallback((id: string | null) => {
+    _setSessionId(id)
+    if (id) {
+      localStorage.setItem('jignasa_session', id)
+    } else {
+      localStorage.removeItem('jignasa_session')
+    }
+  }, [])
 
   const refreshConversations = useCallback(async () => {
     setConversations(await fetchConversations())
@@ -43,7 +52,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         
         let sid: string
         if (list.length) {
-          sid = list[0].session_id
+          const savedSid = localStorage.getItem('jignasa_session')
+          if (savedSid && list.some(c => c.session_id === savedSid)) {
+            sid = savedSid
+          } else {
+            sid = list[0].session_id
+          }
         } else {
           const c = await createConversation()
           sid = c.session_id
