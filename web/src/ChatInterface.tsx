@@ -1115,6 +1115,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                   </div>
                 ) : (
                   <div
+                    key={sessionId}
                     className={`messages${activeSelection ? ' has-selection' : ''}`}
                     onMouseUp={handleTextSelection}
                   >
