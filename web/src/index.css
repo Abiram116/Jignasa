@@ -806,6 +806,13 @@ img, svg { display: block; }
   animation: fade-up 0.4s var(--ease);
 }
 
+/* Brief transitional state while switching to an existing conversation --
+   intentionally blank, not the empty-state prompts (this isn't a new
+   conversation) and not the message list (no content to show yet). */
+.messages-loading-placeholder {
+  flex: 1;
+}
+
 .empty-agent-ring {
   width: 76px;
   height: 76px;
