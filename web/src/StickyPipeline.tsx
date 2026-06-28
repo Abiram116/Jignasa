@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'motion/react'
+import { motion } from 'motion/react'
 import type { Transition } from 'motion/react'
 
 interface Step {
@@ -20,7 +20,6 @@ interface Step {
  * failure mode, while still reading as a confident, sequential reveal.
  */
 export function StickyPipeline({ steps }: { steps: Step[] }) {
-  const reduce = useReducedMotion()
 
   return (
     <div className="steps-list">
