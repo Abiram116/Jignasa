@@ -1,5 +1,13 @@
 export type ChatMode = 'casual' | 'rag' | 'web' | 'hybrid' | 'auto'
 
+export type LLMProvider = 'ollama' | 'openai' | 'anthropic' | 'gemini'
+
+export interface LLMSettings {
+  provider: LLMProvider
+  apiKey: string
+  model?: string
+}
+
 export interface Status {
   ready: boolean
   chunk_count: number

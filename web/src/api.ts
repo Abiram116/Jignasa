@@ -1,6 +1,25 @@
-import type { ChatMode, Conversation, EvaluationSummaryResponse, Message, Source, Status, WebSource } from './types'
+import type { ChatMode, Conversation, EvaluationSummaryResponse, LLMSettings, Message, Source, Status, WebSource } from './types'
 
 const API = '/api'
+
+// BYOK: stored client-side only, sent per-request to our own backend, never
+// written to any database (api/main.py never passes it to db.append_message
+// or set_cached -- see ChatRequest.llm_api_key in api/main.py).
+const LLM_SETTINGS_KEY = 'jignasa_llm_settings'
+
+export function getLLMSettings(): LLMSettings {
+  try {
+    const raw = localStorage.getItem(LLM_SETTINGS_KEY)
+    if (raw) return JSON.parse(raw) as LLMSettings
+  } catch {
+    // fall through to default
+  }
+  return { provider: 'ollama', apiKey: '' }
+}
+
+export function setLLMSettings(settings: LLMSettings): void {
+  localStorage.setItem(LLM_SETTINGS_KEY, JSON.stringify(settings))
+}
 
 export async function fetchStatus(): Promise<Status> {
   const res = await fetch(`${API}/status`)
@@ -51,26 +70,8 @@ export type ChatEvent =
   | { type: 'done'; content: string; prompt_tokens?: number; completion_tokens?: number; cached?: boolean; latency_ms?: number }
   | { type: 'error'; message: string }
 
-export async function streamChat(
-  sessionId: string,
-  message: string,
-  mode: ChatMode,
-  onEvent: (event: ChatEvent) => void,
-  quotedText?: string | null,
-  signal?: AbortSignal,
-  confirmWebSearch?: boolean,
-): Promise<void> {
-  const res = await fetch(`${API}/conversations/${sessionId}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message,
-      mode,
-      quoted_text: quotedText ?? null,
-      confirm_web_search: confirmWebSearch ?? false,
-    }),
-    signal,
-  })
+/** Shared line-buffering reader for any `text/event-stream` response body. */
+async function consumeSSE<E>(res: Response, onEvent: (event: E) => void): Promise<void> {
   if (!res.ok) throw new Error(await res.text())
   const reader = res.body?.getReader()
   if (!reader) throw new Error('No response body')
@@ -84,10 +85,51 @@ export async function streamChat(
     buffer = lines.pop() ?? ''
     for (const line of lines) {
       if (line.startsWith('data: ')) {
-        onEvent(JSON.parse(line.slice(6)) as ChatEvent)
+        onEvent(JSON.parse(line.slice(6)) as E)
       }
     }
   }
+}
+
+export async function streamChat(
+  sessionId: string,
+  message: string,
+  mode: ChatMode,
+  onEvent: (event: ChatEvent) => void,
+  quotedText?: string | null,
+  signal?: AbortSignal,
+  confirmWebSearch?: boolean,
+): Promise<void> {
+  const llm = getLLMSettings()
+  const res = await fetch(`${API}/conversations/${sessionId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      mode,
+      quoted_text: quotedText ?? null,
+      confirm_web_search: confirmWebSearch ?? false,
+      llm_provider: llm.provider,
+      llm_api_key: llm.apiKey || null,
+      llm_model: llm.model || null,
+    }),
+    signal,
+  })
+  await consumeSSE(res, onEvent)
+}
+
+export type UploadEvent =
+  | { type: 'start'; filename: string }
+  | { type: 'parsed'; ok: boolean; message?: string }
+  | { type: 'reindexing' }
+  | { type: 'done'; chunk_count: number }
+  | { type: 'error'; message: string }
+
+export async function uploadAndIndex(file: File, onEvent: (event: UploadEvent) => void): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API}/knowledge-base/upload`, { method: 'POST', body: formData })
+  await consumeSSE(res, onEvent)
 }
 
 export async function fetchEvaluationSummary(): Promise<EvaluationSummaryResponse> {

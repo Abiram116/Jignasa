@@ -15,6 +15,7 @@ from api.config import (
     RAG_INDEX,
     TOP_K,
 )
+from api.security import neutralise_injection
 
 
 @lru_cache(maxsize=1)
@@ -98,7 +99,7 @@ def build_prompt(question: str, hits: list[dict], history: list[dict] | None = N
     The `history` param is kept for backwards compatibility but ignored.
     """
     context = "\n\n".join(
-        f"[{h['source']} p.{h.get('page_number')}] {h['text']}" for h in hits
+        f"[{h['source']} p.{h.get('page_number')}] {neutralise_injection(h['text'])}" for h in hits
     ) or "No relevant chunks were retrieved."
     return f"""Answer the question using ONLY the document context below.
 If the answer is not in the context, say exactly: "I don't have enough information in the documents to answer that."

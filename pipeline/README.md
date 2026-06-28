@@ -29,7 +29,8 @@ is reported as **failed**, never silently downgraded.
 | `01_profile_corpus.py` | Reads each PDF's page count, text density, and flags pages that look image-heavy or have suspicious font encodings, *before* spending 20+ minutes parsing. | `rag_index/corpus_profile.json` |
 | `_parse_one_pdf.py` | Worker (not run directly): parses ONE pdf with Docling's `HybridChunker`, which preserves page numbers and section headings. Flags any chunk that's mostly non-Latin/garbled characters (a sign of a PDF font with no proper character map) as `low_confidence` instead of silently keeping it. | `rag_index/parsed_markdown/<name>.chunks.json` |
 | `02_parse_and_chunk.py` | Driver: runs the worker once per PDF (subprocess each), skips PDFs already done, retries failures, exits non-zero if any PDF truly fails. | same as above, for all PDFs |
-| `03_build_index.py` | Embeds all chunks with BGE and builds the FAISS index. | `rag_index/faiss.index`, `rag_index/metadata.json` |
+| `03_build_index.py` | Embeds **all** chunks with BGE and builds a fresh FAISS index from scratch. Used for the initial build and full recovery. | `rag_index/faiss.index`, `rag_index/metadata.json` |
+| `_add_to_index.py` | Worker (not run directly; used by the in-app upload feature): embeds **only** one PDF's chunks and adds them to the *existing* index via `index.add()`, instead of rebuilding it. Atomic writes (temp file + rename). | updates the same two files above, in place |
 | `04_generate_eval_set.py` | Uses the local Ollama model to **draft** question/answer pairs grounded in specific chunks, across all 4 sources. You review/edit the draft before treating it as a trusted eval set — see that script's docstring for why. | `data/evaluation_set_v2.json` |
 
 ## Why these specific technical choices
@@ -74,3 +75,55 @@ python3 pipeline/04_generate_eval_set.py
 
 Delete a PDF's `rag_index/parsed_markdown/<name>.chunks.json` to force
 re-parsing just that PDF.
+
+Each script checks for its required input up front (PDFs for `01`/`02`,
+`.chunks.json` files for `03`) and exits cleanly with a message telling you
+what to run first if it's missing — not a raw traceback. This matters most
+on a fresh clone, where `knowledge-base/` is empty until you add PDFs.
+
+## Uploading documents at runtime
+
+PDFs can also be added through the running app itself (an upload control
+in the chat sidebar) instead of copying files in and running these scripts
+by hand. It reuses the existing parsing code, not a separate
+implementation: the uploaded file is saved into `knowledge-base/`, parsed
+via the same per-PDF worker (`_parse_one_pdf.py`) `02_parse_and_chunk.py`
+already uses, then its chunks are added to the index incrementally via
+`_add_to_index.py` (a second worker, alongside `_parse_one_pdf.py`).
+Progress streams back to the UI the same way `/api/evaluation/run`
+already does.
+
+**Incremental, not a full reindex:** `_add_to_index.py` embeds *only* the
+newly uploaded PDF's chunks, loads the existing `faiss.index`, calls
+`index.add()` with just the new vectors, and appends the new entries to
+`metadata.json` — it never re-embeds chunks that were already indexed.
+This matters once a knowledge base has many documents: re-embedding the
+whole corpus on every single upload (which is what an earlier version of
+this feature did) would get slower, and use more memory, the larger the
+knowledge base grows, for no benefit, since nothing about the
+already-indexed documents changed. Both the index file and metadata file
+are written atomically (build the new version in a `.tmp` file, then
+rename over the original), so a crash mid-write can't leave a corrupted
+index. Verified directly: after an incremental add, the pre-existing
+metadata entries are byte-for-byte unchanged, and the new document is
+immediately retrievable alongside the rest of the corpus.
+
+`03_build_index.py` (the full rebuild) is still the right tool for the
+*initial* multi-PDF build, and for full recovery (e.g. after deleting a
+`.chunks.json` to force a PDF to be reparsed, or if the index/metadata
+ever get out of sync) — `_add_to_index.py` is strictly additive and only
+safe for chunks that aren't already in the index. Deleting or updating a
+previously-indexed document isn't supported yet (would need to track
+which vector rows came from which source file); only adding new ones is.
+
+**Privacy:** files uploaded through the app are written to this machine's
+(or server's) own `knowledge-base/` folder. No upload data is sent to any
+third party or external service as part of this feature.
+
+**Memory on lower-RAM machines (8-16GB):** one PDF is processed at a time —
+the UI uploads and indexes a single file per request, and both the parsing
+step and the reindex step run as their own subprocesses (the same
+subprocess-isolation pattern explained above for `_parse_one_pdf.py`),
+not inside the long-lived API server process. So uploading several PDFs
+over a session doesn't accumulate memory in the server itself; each
+subprocess's memory is freed by the OS when it exits, win or fail.

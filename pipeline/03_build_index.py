@@ -35,9 +35,10 @@ from pipeline.common.config import (  # noqa: E402
 def load_all_chunks() -> list[dict]:
     chunk_files = sorted(PARSED_MD.glob("*.chunks.json"))
     if not chunk_files:
-        raise FileNotFoundError(
-            f"No *.chunks.json files in {PARSED_MD} -- run 02_parse_and_chunk.py first"
-        )
+        print(f"No *.chunks.json files found in {PARSED_MD}.")
+        print("Run pipeline/02_parse_and_chunk.py first, then rerun this script.")
+        print("See knowledge-base/README.md for details.")
+        sys.exit(0)
     chunks = []
     for f in chunk_files:
         chunks.extend(json.loads(f.read_text(encoding="utf-8")))

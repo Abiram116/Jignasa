@@ -10,12 +10,16 @@ import {
   renameConversation,
   fetchConversations,
   fetchMessages,
+  getLLMSettings,
+  setLLMSettings,
   savePartialAssistant,
   streamChat,
   truncateConversation,
 } from './api'
-import type { ChatMode, Message, Source, WebSource } from './types'
+import type { ChatMode, LLMSettings, Message, Source, WebSource } from './types'
 import { useAppState } from './AppContext'
+import { SettingsModal } from './SettingsModal'
+import { UploadModal } from './UploadModal'
 import './index.css'
 
 /* ── Inline SVG icons ──────────────────────────────────────────────── */
@@ -513,7 +517,8 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     setConversations,
     sessionId,
     setSessionId,
-    refreshConversations
+    refreshConversations,
+    refreshStatus,
   } = useAppState()
 
   // App initialization states
@@ -521,6 +526,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   
   const [selectedMode, setSelectedMode] = useState<ChatMode>('auto')
   const [showCostModal, setShowCostModal] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [llmSettings, setLlmSettingsState] = useState<LLMSettings>(() => getLLMSettings())
 
   const [title, setTitle] = useState('New Chat')
   const [messages, setMessages] = useState<Message[]>([])
@@ -996,6 +1004,22 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                 >
                   🪙 Token cost
                 </button>
+                <button
+                  id="btn-llm-settings"
+                  className="btn-cost-calc"
+                  onClick={() => setShowSettingsModal(true)}
+                  title="Choose between local Ollama or your own API key"
+                >
+                  ⚙️ {llmSettings.provider === 'ollama' ? 'Local model' : `${llmSettings.provider} (BYOK)`}
+                </button>
+                <button
+                  id="btn-upload-kb"
+                  className="btn-cost-calc"
+                  onClick={() => setShowUploadModal(true)}
+                  title="Add a PDF to your knowledge base"
+                >
+                  📄 Add document
+                </button>
               </div>
 
               <div className="conv-section">
@@ -1236,6 +1260,19 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
         <CostCalculatorModal
           messages={messages}
           onClose={() => setShowCostModal(false)}
+        />
+      )}
+      {showSettingsModal && (
+        <SettingsModal
+          settings={llmSettings}
+          onSave={(s) => { setLLMSettings(s); setLlmSettingsState(s) }}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+      {showUploadModal && (
+        <UploadModal
+          onClose={() => setShowUploadModal(false)}
+          onIndexed={() => { refreshStatus() }}
         />
       )}
     </>

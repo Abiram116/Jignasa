@@ -9,12 +9,18 @@ import { StaggerReveal } from './ScrollReveal'
 import TextPressure from './TextPressure'
 import { StickyPipeline } from './StickyPipeline'
 import { EvalResultsSection } from './EvalResultsSection'
+import { StaticShowcaseSection } from './StaticShowcaseSection'
 
 interface HomePageProps {
   onEnter: () => void
   onEvalLoaded?: () => void
   triggerHeroAnimations?: boolean
 }
+
+// GitHub Pages showcase build has no backend behind /chat -- point the CTAs
+// at the repo instead so visitors can self-host rather than hit a dead route.
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
+const REPO_URL = 'https://github.com/Abiram116/Jignasa'
 
 /* ── Star field ── */
 function StarField() {
@@ -188,6 +194,10 @@ const steps = [
 export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations = false }: HomePageProps) {
   const featuresRef = useRef<HTMLDivElement>(null)
 
+  const handleEnter = STATIC_DEMO
+    ? () => window.open(REPO_URL, '_blank', 'noopener,noreferrer')
+    : onEnter
+
   const heroVariants: Variants = {
     hidden: {},
     show: {
@@ -250,8 +260,8 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
 
         {/* CTA */}
         <motion.div className="hero-actions" variants={itemVariants}>
-          <button className="btn-cta-primary" onClick={onEnter}>
-            Start a conversation
+          <button className="btn-cta-primary" onClick={handleEnter}>
+            {STATIC_DEMO ? 'Get it on GitHub' : 'Start a conversation'}
             <span style={{ fontSize: '1.1rem' }}>→</span>
           </button>
           <button
@@ -337,6 +347,9 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       {/* ── Evaluation results ── */}
       <EvalResultsSection onLoaded={onEvalLoaded} />
 
+      {/* ── Showcase-only guide + contact (GitHub Pages build only) ── */}
+      {STATIC_DEMO && <StaticShowcaseSection />}
+
       {/* ── Agent manifesto ── */}
       <section className="manifesto-section" style={{ padding: 0 }}>
         <motion.div 
@@ -374,8 +387,8 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
               sources: your PDFs, the live web, or both at once.
             </p>
 
-            <button className="btn-cta-primary" onClick={onEnter} style={{ marginTop: '2rem', transform: 'scale(1.2)' }}>
-              Begin seeking →
+            <button className="btn-cta-primary" onClick={handleEnter} style={{ marginTop: '2rem', transform: 'scale(1.2)' }}>
+              {STATIC_DEMO ? 'View the source →' : 'Begin seeking →'}
             </button>
           </div>
         </motion.div>

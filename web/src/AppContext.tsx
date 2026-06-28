@@ -11,6 +11,7 @@ interface AppState {
   sessionId: string | null
   setSessionId: (id: string | null) => void
   refreshConversations: () => Promise<void>
+  refreshStatus: () => Promise<void>
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -33,6 +34,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshConversations = useCallback(async () => {
     setConversations(await fetchConversations())
+  }, [])
+
+  const refreshStatus = useCallback(async () => {
+    setStatus(await fetchStatus())
   }, [])
 
   /* ── Bootstrap ── */
@@ -93,7 +98,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setConversations,
       sessionId,
       setSessionId,
-      refreshConversations
+      refreshConversations,
+      refreshStatus,
     }}>
       {children}
     </AppContext.Provider>

@@ -1,0 +1,28 @@
+{
+  "retrieval": {
+    "name": "v2_post_rebuild",
+    "label": "v2_post_rebuild",
+    "saved_at": "2026-06-25T08:15:16+00:00",
+    "question_count": 80,
+    "k": 5,
+    "hit_at_k": 1,
+    "recall_at_k": 1.0,
+    "precision_at_k": 0.2,
+    "mrr_at_k": 0.98125,
+    "ndcg_at_k": 0.9861598657589297,
+    "evaluated_at": "2026-06-25T08:15:16+00:00",
+    "eval_type": "retrieval_only",
+    "uses_llm": false,
+    "eval_description": "Retrieval only: embed question + FAISS search + check expected PDF. No LLM."
+  },
+  "ragas": {
+    "question_count": 32,
+    "faithfulness": 0.7858,
+    "answer_relevancy": 0.8867,
+    "context_precision": 0.8471,
+    "context_recall": 0.8438,
+    "judge_llm": "qwen3:8b",
+    "embedding_model": "BAAI/bge-base-en-v1.5",
+    "evaluated_at": "2026-06-25T10:00:15+00:00"
+  }
+}

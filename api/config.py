@@ -1,6 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+KB = ROOT / "knowledge-base"
 RAG_INDEX = ROOT / "rag_index"
 INDEX_PATH = RAG_INDEX / "faiss.index"
 METADATA_PATH = RAG_INDEX / "metadata.json"

@@ -113,8 +113,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Rate-limit on the chat endpoint only (most expensive path)
-        if request.url.path.endswith("/chat") and request.method == "POST":
+        # Rate-limit the expensive paths: chat (per-message LLM calls) and
+        # evaluation (runs the full RAG pipeline over a question set).
+        is_chat = request.url.path.endswith("/chat") and request.method == "POST"
+        is_eval = request.url.path.startswith("/api/evaluation/") and request.method == "POST"
+        if is_chat or is_eval:
             ip = get_client_ip(request)
             if not _limiter.is_allowed(ip):
                 return JSONResponse(
@@ -176,3 +179,18 @@ def check_prompt_injection(text: str) -> None:
                 "Your message was flagged by the safety filter. "
                 "Please rephrase your question."
             )
+
+
+def neutralise_injection(text: str) -> str:
+    """
+    Defuse (not reject) injection-shaped text found in *retrieved* content --
+    RAG chunks from a PDF, or web search snippets/titles. Unlike
+    check_prompt_injection (used on the user's own message, where rejecting
+    and asking them to rephrase is fine), failing the whole answer because a
+    retrieved document or web page happens to contain "ignore previous
+    instructions" would let any indexed PDF or search result silently break
+    answers for everyone -- so this defuses the pattern in place instead.
+    """
+    for pattern in _INJECTION_PATTERNS:
+        text = pattern.sub("[filtered]", text)
+    return text

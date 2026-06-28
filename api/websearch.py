@@ -13,6 +13,8 @@ in api/main.py for the prompt-side fix.
 """
 from __future__ import annotations
 
+from api.security import neutralise_injection
+
 
 def web_search(query: str, n: int = 5) -> list[dict]:
     """
@@ -54,7 +56,7 @@ def build_web_prompt(question: str, results: list[dict], history: list[dict]) ->
         snippets = []
         for i, r in enumerate(results, start=1):
             snippets.append(
-                f"[{i}] {r['title']}\nURL: {r['url']}\n{r['snippet']}"
+                f"[{i}] {neutralise_injection(r['title'])}\nURL: {r['url']}\n{neutralise_injection(r['snippet'])}"
             )
         context = "\n\n".join(snippets)
 
