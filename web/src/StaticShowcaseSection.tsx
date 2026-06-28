@@ -1,4 +1,4 @@
-import { ScrollReveal, StaggerReveal } from './ScrollReveal'
+import { ScrollReveal } from './ScrollReveal'
 import ScrollFloat from './ScrollFloat'
 
 const REPO_URL = 'https://github.com/Abiram116/Jignasa'
@@ -45,68 +45,43 @@ export function StaticShowcaseSection() {
       <section className="how-section">
         <p className="section-eyebrow">About this page</p>
         <ScrollFloat containerClassName="section-title">A showcase, not a hosted instance</ScrollFloat>
-        <p className="section-lead">
+        <p className="section-lead" style={{ maxWidth: '700px' }}>
           Jignasa is local-first by design — Ollama and FAISS running on your
           own machine, with no cloud backend to host. GitHub Pages serves
-          static files only, so there's no live chat here. The repository
-          includes a Docker setup for running it yourself.
+          static files only, so there's no live chat here.
         </p>
+        
         <ScrollReveal>
-          <div className="eval-empty-state" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
-            <p style={{ margin: 0 }}>
-              <strong>Run it locally:</strong> clone the repository, then follow
-              the Quick Start or run <code>docker compose up</code> — see{' '}
-              <a href={`${REPO_URL}#quick-start`} target="_blank" rel="noopener noreferrer">
-                the README
-              </a>{' '}
-              and{' '}
-              <a href={`${REPO_URL}/blob/master/docs/DEPLOYMENT.md`} target="_blank" rel="noopener noreferrer">
-                docs/DEPLOYMENT.md
-              </a>.
-            </p>
-            <p style={{ margin: 0 }}>
-              <strong>Full technical write-up:</strong> architecture, prompt
-              design, a real debugging case study, and a security audit with
-              fixes live in{' '}
-              <a href={`${REPO_URL}/blob/master/docs/TECHNICAL.md`} target="_blank" rel="noopener noreferrer">
-                docs/TECHNICAL.md
-              </a>.
-            </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+            <a className="btn-cta-primary" href={`${REPO_URL}#quick-start`} target="_blank" rel="noopener noreferrer">
+              Run it locally →
+            </a>
+            <a className="btn-cta-secondary" href={`${REPO_URL}/blob/master/docs/TECHNICAL.md`} target="_blank" rel="noopener noreferrer">
+              Read technical write-up
+            </a>
           </div>
         </ScrollReveal>
       </section>
 
       <section className="how-section">
         <p className="section-eyebrow">Engineering decisions</p>
-        <ScrollFloat containerClassName="section-title">Built around real failure modes, not defaults</ScrollFloat>
-        <p className="section-lead">
-          Each of these started as a problem encountered while building this
-          system, not a feature picked off a list. The full reasoning for
-          each is documented in the repository, not just asserted here.
-        </p>
-        <StaggerReveal
-          className="feature-grid"
-          staggerMs={70}
-          items={decisions.map((d) => ({ key: d.title, d }))}
-          renderItem={({ d }) => (
-            <>
-              <h3>{d.title}</h3>
-              <p>{d.body}</p>
-            </>
-          )}
-          itemClassName="feature-card"
-        />
-      </section>
-
-      <section className="how-section">
-        <ScrollReveal>
-          <div className="eval-empty-state">
-            <p style={{ margin: 0 }}>
-              Demo recording in progress — a walkthrough of document retrieval,
-              live web search, and the hybrid mode will be linked here.
-            </p>
-          </div>
-        </ScrollReveal>
+        <ScrollFloat containerClassName="section-title">Built around real failure modes</ScrollFloat>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3.5rem', marginTop: '4rem', maxWidth: '800px', margin: '4rem auto 0 auto' }}>
+          {decisions.map((d) => (
+            <ScrollReveal key={d.title}>
+              <div style={{ paddingLeft: '1.5rem', borderLeft: '2px solid var(--border-1)', position: 'relative' }}>
+                <div style={{ position: 'absolute', left: '-5px', top: '8px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--indigo-400)', boxShadow: '0 0 10px var(--indigo-400)' }} />
+                <h3 style={{ fontSize: '1.25rem', fontFamily: 'Outfit, sans-serif', color: 'var(--text-1)', marginBottom: '0.75rem', fontWeight: 500, letterSpacing: '-0.01em' }}>
+                  {d.title}
+                </h3>
+                <p style={{ color: 'var(--text-3)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+                  {d.body}
+                </p>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
       </section>
 
       <section className="how-section" id="contact" style={{ textAlign: 'center', alignItems: 'center' }}>
@@ -121,8 +96,8 @@ export function StaticShowcaseSection() {
         </p>
         <ScrollReveal>
           <div className="hero-actions" style={{ justifyContent: 'center' }}>
-            <a className="btn-cta-primary" href={`mailto:${EMAIL}`}>
-              ✉️ {EMAIL}
+            <a className="btn-cta-primary" href={`https://mail.google.com/mail/?view=cm&fs=1&to=${EMAIL}`} target="_blank" rel="noopener noreferrer">
+              ✉️ Send Email
             </a>
             <a className="btn-cta-secondary" href={REPO_URL} target="_blank" rel="noopener noreferrer">
               View source on GitHub

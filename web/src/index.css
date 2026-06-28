@@ -2322,11 +2322,9 @@ tr:last-child td { border-bottom: none; }
 .features-section {
   position: relative;
   z-index: 1;
-  padding: 2rem;
+  padding: 4rem 2rem;
   max-width: 1100px;
   margin: 0 auto;
-  min-height: 100vh;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -2335,11 +2333,9 @@ tr:last-child td { border-bottom: none; }
 .eval-results-section {
   position: relative;
   z-index: 1;
-  padding: 3rem 2rem;
+  padding: 4rem 2rem;
   max-width: 1100px;
   margin: 0 auto;
-  min-height: 100vh;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -2595,14 +2591,12 @@ tr:last-child td { border-bottom: none; }
 .how-section {
   position: relative;
   z-index: 1;
-  padding: 5rem 2rem;
+  padding: 4rem 2rem;
   max-width: 900px;
   margin: 0 auto;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  scroll-snap-align: center;
 }
 
 .steps-list {
