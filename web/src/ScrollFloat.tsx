@@ -8,7 +8,6 @@
 // so there's no equivalent failure mode for blank gaps.
 import { useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { useReducedMotion } from 'motion/react'
 import './ScrollFloat.css'
 
 interface ScrollFloatProps {
@@ -20,7 +19,6 @@ interface ScrollFloatProps {
 
 export default function ScrollFloat({ children, as = 'h2', containerClassName = '', stagger = 0.025 }: ScrollFloatProps) {
   const containerRef = useRef<HTMLHeadingElement>(null)
-  const reduce = useReducedMotion()
 
   const splitText = useMemo<ReactNode>(
     () =>

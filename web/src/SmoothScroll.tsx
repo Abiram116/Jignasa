@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { useReducedMotion } from 'motion/react'
 import Lenis from 'lenis'
 
 /**
@@ -16,7 +15,6 @@ import Lenis from 'lenis'
  * on native scroll, untouched).
  */
 export function SmoothScroll() {
-  const reduce = useReducedMotion()
 
   useEffect(() => {
     const root = document.querySelector<HTMLElement>('#root')
@@ -57,7 +55,7 @@ export function SmoothScroll() {
       }
       lenis?.destroy()
     }
-  }, [reduce])
+  }, [])
 
   return null
 }
