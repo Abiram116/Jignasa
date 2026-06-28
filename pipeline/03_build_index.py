@@ -8,10 +8,18 @@ indexes (HNSW/IVF) trade recall for speed and only pay off once you have
 on the order of 100K+ vectors. See pipeline/README.md for the full
 reasoning, including why a dedicated vector DB isn't needed yet either.
 
+Why IndexIDMap (since 2026-06-28, see pipeline/REBUILD_LOG.md): wrapping
+the flat index in an IndexIDMap lets every vector carry a stable integer
+ID instead of being addressed only by its position in the index. That's
+what makes pipeline/_add_to_index.py's incremental adds and
+api/upload.py's per-document deletes both possible without rebuilding
+the whole index -- a plain IndexFlatIP has no concept of "this vector
+belongs to this document," only "the vector at position 47."
+
 This script reads every rag_index/parsed_markdown/*.chunks.json (written by
 02_parse_and_chunk.py), embeds them all in one batch, and writes:
-  - rag_index/faiss.index   (vectors)
-  - rag_index/metadata.json (one entry per vector, same order, includes text)
+  - rag_index/faiss.index   (IndexIDMap-wrapped vectors)
+  - rag_index/metadata.json ({"next_id": int, "vectors": {"<id>": {...}}})
 """
 
 from __future__ import annotations
@@ -63,12 +71,19 @@ def main() -> None:
     vectors = np.asarray(embeddings.embed_documents(texts), dtype=np.float32)
     faiss.normalize_L2(vectors)
 
-    index = faiss.IndexFlatIP(vectors.shape[1])
-    index.add(vectors)
+    ids = np.arange(len(chunks), dtype=np.int64)
+    index = faiss.IndexIDMap(faiss.IndexFlatIP(vectors.shape[1]))
+    index.add_with_ids(vectors, ids)
     INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(INDEX_PATH))
 
-    metadata = [c["metadata"] | {"text": c["text"]} for c in chunks]
+    metadata = {
+        "next_id": len(chunks),
+        "vectors": {
+            str(i): (c["metadata"] | {"text": c["text"]})
+            for i, c in enumerate(chunks)
+        },
+    }
     METADATA_PATH.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     print(f"\nFAISS index: {INDEX_PATH} ({index.ntotal} vectors, dim={vectors.shape[1]})")

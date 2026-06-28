@@ -114,6 +114,39 @@ Other things fixed in the same pass:
   `rag_with_langchain.ipynb` notebook. Now points at the actual
   `pipeline/` scripts.
 
+### Knowledge base mutations: incremental add + surgical delete (`IndexIDMap`)
+
+The FAISS index started as a plain `IndexFlatIP` with `metadata.json` as a
+flat list, positionally aligned to the index's vector order — fine for a
+static, build-once index, but it meant the only way to remove a
+document's vectors was to re-embed every remaining document and rebuild
+from scratch, since FAISS had no way to address "this document's
+vectors" specifically.
+
+As of 2026-06-28 (`pipeline/REBUILD_LOG.md` has the full write-up), the
+index is wrapped in a `faiss.IndexIDMap`: every vector gets a stable
+64-bit integer ID, tracked in `metadata.json`'s new shape —
+`{"next_id": int, "vectors": {"<id>": {...}}}` — instead of a bare list.
+This makes both knowledge-base mutations cheap and corpus-size-independent:
+
+- **Upload** (`pipeline/_add_to_index.py`): embeds only the new PDF's
+  chunks, assigns them the next available IDs, `index.add_with_ids()`.
+  Never re-embeds anything already indexed.
+- **Delete** (`api/upload.py`'s `delete_knowledge_base_file()`): looks up
+  which vector IDs belong to the deleted file, calls
+  `index.remove_ids([...])` directly. Measured on the real index (2206
+  chunks, 5 documents): **33ms**, where the previous rebuild-based
+  approach scaled with total corpus size regardless of how small the
+  deleted document was.
+
+Migrating the existing index needed no re-embedding —
+`IndexFlatIP.reconstruct_n()` hands back the exact vectors it was given,
+so the one-time migration (`pipeline/_migrate_to_id_map.py`) just
+reassigns IDs to vectors that already existed. Verified lossless by
+running the same query against the pre- and post-migration index side by
+side: identical scores and sources, to the float — not just "still
+returns results," provably the same results.
+
 ### Citation linking — moved server-side
 
 Web/hybrid responses cite sources as `[1]`, `[2]`, etc. These need to

@@ -2,6 +2,8 @@ import { motion, AnimatePresence } from 'motion/react'
 import { useEffect, useState } from 'react'
 import './index.css'
 
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
+
 interface PreLoaderProps {
   loaded: boolean
   onComplete: () => void
@@ -108,33 +110,35 @@ export function PreLoader({ loaded, onComplete }: PreLoaderProps) {
           </svg>
 
           <div className="preloader-text-container" style={{ position: 'relative', height: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <AnimatePresence mode="wait">
-              {phase === 'expanding' ? (
-                <motion.div 
-                  key="waking" 
-                  initial={{ opacity: 0, y: 5 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={{ duration: 0.2 }}
-                  className="preloader-text" 
-                  style={{ color: '#fff', position: 'absolute', whiteSpace: 'nowrap' }}
-                >
-                  Waking up the agent...
-                </motion.div>
-              ) : (
-                <motion.div 
-                  key="awoke" 
-                  initial={{ opacity: 0, y: 5 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={{ duration: 0.2 }}
-                  className="preloader-text" 
-                  style={{ color: '#fff', position: 'absolute', whiteSpace: 'nowrap' }}
-                >
-                  Agent awoke.
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {!STATIC_DEMO && (
+              <AnimatePresence mode="wait">
+                {phase === 'expanding' ? (
+                  <motion.div 
+                    key="waking" 
+                    initial={{ opacity: 0, y: 5 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                    className="preloader-text" 
+                    style={{ color: '#fff', position: 'absolute', whiteSpace: 'nowrap' }}
+                  >
+                    Waking up the agent...
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="awoke" 
+                    initial={{ opacity: 0, y: 5 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                    className="preloader-text" 
+                    style={{ color: '#fff', position: 'absolute', whiteSpace: 'nowrap' }}
+                  >
+                    Agent awoke.
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            )}
           </div>
 
         </div>

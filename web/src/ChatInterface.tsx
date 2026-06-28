@@ -19,7 +19,7 @@ import {
 import type { ChatMode, LLMSettings, Message, Source, WebSource } from './types'
 import { useAppState } from './AppContext'
 import { SettingsModal } from './SettingsModal'
-import { UploadModal } from './UploadModal'
+import { SidebarUploadView, useUploadQueue } from './SidebarUploadView'
 import './index.css'
 
 /* ── Inline SVG icons ──────────────────────────────────────────────── */
@@ -527,7 +527,12 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   const [selectedMode, setSelectedMode] = useState<ChatMode>('auto')
   const [showCostModal, setShowCostModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [sidebarView, setSidebarView] = useState<'chats' | 'upload'>('chats')
+  
+  const { queue, activeStages, addFiles } = useUploadQueue(() => {
+    refreshStatus()
+  })
+
   const [llmSettings, setLlmSettingsState] = useState<LLMSettings>(() => getLLMSettings())
 
   const [title, setTitle] = useState('New Chat')
@@ -1015,70 +1020,107 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                 <button
                   id="btn-upload-kb"
                   className="btn-cost-calc"
-                  onClick={() => setShowUploadModal(true)}
+                  onClick={() => setSidebarView('upload')}
                   title="Add a PDF to your knowledge base"
                 >
                   📄 Add document
                 </button>
               </div>
 
-              <div className="conv-section">
-                {conversations.length > 0 && (
-                  <div className="conv-section-label">History</div>
+              <AnimatePresence mode="wait">
+                {sidebarView === 'chats' ? (
+                  <motion.div
+                    key="chats"
+                    className="conv-section"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {conversations.length > 0 && (
+                      <div className="conv-section-label">History</div>
+                    )}
+                    {conversations.map((c) => (
+                      <div key={c.session_id} className={`conv-item ${c.session_id === sessionId ? 'active' : ''}`}>
+                        <button
+                          id={`conv-${c.session_id}`}
+                          className="conv-item-btn"
+                          onClick={() => {
+                            setMessagesLoading(true)
+                            setMessages([])
+                            setSessionId(c.session_id)
+                          }}
+                        >
+                          {c.title || 'New Chat'}
+                        </button>
+                        <div className="conv-actions">
+                          <button
+                            className="conv-action-btn"
+                            onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
+                            title="Rename"
+                          >
+                            <Ic.Rename />
+                          </button>
+                          <button
+                            className="conv-action-btn danger"
+                            onClick={() => handleDelete(c.session_id)}
+                            title="Delete"
+                          >
+                            <Ic.Trash />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="upload"
+                    className="conv-section upload-section"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <SidebarUploadView
+                      onBack={() => setSidebarView('chats')}
+                      queue={queue}
+                      activeStages={activeStages}
+                      addFiles={addFiles}
+                    />
+                  </motion.div>
                 )}
-                {conversations.map((c) => (
-                  <div key={c.session_id} className={`conv-item ${c.session_id === sessionId ? 'active' : ''}`}>
-                    <button
-                      id={`conv-${c.session_id}`}
-                      className="conv-item-btn"
-                      onClick={() => {
-                        // Clear before switching, not after the fetch resolves --
-                        // otherwise the previous conversation's bubbles render
-                        // fresh inside the new container for a moment, then get
-                        // swapped for real data at the same keys, which Motion's
-                        // `layout` prop reads as a morph between old and new
-                        // content instead of a clean mount. Two different-looking
-                        // animations instead of one consistent entrance.
-                        // messagesLoading distinguishes this transient empty
-                        // state from a genuinely-new/empty conversation, so the
-                        // "Ask about your documents" prompts don't flash for
-                        // old conversations while their real messages load.
-                        setMessagesLoading(true)
-                        setMessages([])
-                        setSessionId(c.session_id)
-                      }}
-                    >
-                      {c.title || 'New Chat'}
-                    </button>
-                    <div className="conv-actions">
-                      <button
-                        className="conv-action-btn"
-                        onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
-                        title="Rename"
-                      >
-                        <Ic.Rename />
-                      </button>
-                      <button
-                        className="conv-action-btn danger"
-                        onClick={() => handleDelete(c.session_id)}
-                        title="Delete"
-                      >
-                        <Ic.Trash />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              </AnimatePresence>
 
-              <div className="sidebar-footer">
-                <div className="mode-legend">
-                  <div className="legend-title">Answer modes</div>
-                  <div className="legend-row"><span className="mode-badge badge-casual"><Ic.Sparkle />Chat</span><span>Casual conversation</span></div>
-                  <div className="legend-row"><span className="mode-badge badge-rag"><Ic.Doc />PDF RAG</span><span>Document retrieval</span></div>
-                  <div className="legend-row"><span className="mode-badge badge-web"><Ic.Globe />Web</span><span>Live web search</span></div>
-                  <div className="legend-row"><span className="mode-badge badge-hybrid"><Ic.Globe />Hybrid</span><span>Combined PDF + Web</span></div>
-                </div>
-              </div>
+              <AnimatePresence>
+                {sidebarView === 'chats' && (
+                  <motion.div 
+                    className="sidebar-footer"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <div className="mode-legend">
+                      <div className="legend-title">Answer modes</div>
+                      <div className="legend-row">
+                        <span className="mode-badge badge-casual"><Ic.Sparkle />Chat</span>
+                        <span>Casual conversation</span>
+                      </div>
+                      <div className="legend-row">
+                        <span className="mode-badge badge-rag"><Ic.Doc />PDF RAG</span>
+                        <span>Document retrieval</span>
+                      </div>
+                      <div className="legend-row">
+                        <span className="mode-badge badge-web"><Ic.Globe />Web</span>
+                        <span>Live web search</span>
+                      </div>
+                      <div className="legend-row">
+                        <span className="mode-badge badge-hybrid"><Ic.Globe />Hybrid</span>
+                        <span>Combined PDF + Web</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.aside>
           )}
         </AnimatePresence>
@@ -1267,12 +1309,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           settings={llmSettings}
           onSave={(s) => { setLLMSettings(s); setLlmSettingsState(s) }}
           onClose={() => setShowSettingsModal(false)}
-        />
-      )}
-      {showUploadModal && (
-        <UploadModal
-          onClose={() => setShowUploadModal(false)}
-          onIndexed={() => { refreshStatus() }}
         />
       )}
     </>
