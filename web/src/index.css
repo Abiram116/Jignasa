@@ -98,8 +98,9 @@
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { /* scroll-behavior managed by Lenis on #root, not native */ }
-html, body, #root { height: 100%; }
+html { /* scroll-behavior managed by Lenis natively */ }
+html, body { min-height: 100%; }
+#root { min-height: 100vh; display: flex; flex-direction: column; }
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
@@ -109,8 +110,8 @@ body {
   background: var(--void);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
   position: relative;
+  overflow-x: hidden;
 }
 
 /* Subtle grain so the dark base reads as textured depth rather than a flat
@@ -125,9 +126,9 @@ body::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Make the root scrollable for homepage */
+/* Allow #root to grow naturally */
 #root {
-  overflow: auto;
+  flex: 1;
 }
 
 /* Reduced motion: gentler, not zero — keep opacity/color transitions,
@@ -2766,12 +2767,11 @@ tr:last-child td { border-bottom: none; }
 .manifesto-section {
   position: relative;
   z-index: 1;
-  padding: 6rem 2rem;
+  padding: 6rem 2rem 10rem 2rem;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  scroll-snap-align: center;
 }
 
 .manifesto-box {

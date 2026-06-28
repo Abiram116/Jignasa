@@ -52,7 +52,7 @@ export function StaticShowcaseSection() {
         </p>
         
         <ScrollReveal>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem', flexWrap: 'wrap' }}>
             <a className="btn-cta-primary" href={`${REPO_URL}#quick-start`} target="_blank" rel="noopener noreferrer">
               Run it locally →
             </a>

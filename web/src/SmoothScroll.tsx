@@ -28,7 +28,6 @@ export function SmoothScroll() {
     let tick: ((time: number) => void) | null = null
 
     const lenisInstance = new Lenis({
-      wrapper: root,
       duration: 1.1,
       easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
