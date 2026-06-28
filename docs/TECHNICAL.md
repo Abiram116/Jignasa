@@ -225,9 +225,72 @@ every homepage motion component and why it exists.
   attempts (`"ignore previous instructions"`, `"act as if you"`, etc.) —
   this is a basic keyword filter, not a robust defense; treat it as a
   speed bump, not a security boundary.
-- Per-IP token-bucket rate limiting (30 req/60s) on the chat endpoint.
+- Per-IP token-bucket rate limiting (30 req/60s) on the chat endpoint and
+  the evaluation endpoints (the other expensive path — runs the full RAG
+  pipeline over a question set).
 - Standard security headers (CSP, HSTS, X-Frame-Options, etc.) via
   `SecurityHeadersMiddleware`.
+- BYOK (`api/llm.py`): a user-supplied OpenAI/Anthropic/Gemini key is used
+  for exactly one provider-client construction per request and discarded —
+  never passed to `db.append_message` or `cache.set_cached`, never logged.
+
+### Security audit (found and fixed during the Docker/BYOK deployment pass)
+
+A self-review pass turned up one real vulnerability and one design gap,
+both fixed in the same pass rather than just documented:
+
+- **Path traversal in the static-frontend route (HIGH, fixed).** The Docker
+  build serves `web/dist/` via a catch-all FastAPI route
+  (`@app.get("/{full_path:path}")`) so one container can serve both API and
+  frontend. The first version built `requested = _DIST_DIR / full_path` and
+  served it if `requested.is_file()` — but Starlette's `:path` converter
+  passes `../` segments through literally, so a request like
+  `GET /../../api/main.py` resolved outside `web/dist/` entirely and would
+  have served arbitrary files readable by the process (verified: an
+  unresolved `../../api/main.py` path did exist and was readable). Fixed by
+  resolving the path and checking containment before serving:
+  `requested = (_DIST_DIR / full_path).resolve()` then
+  `requested.relative_to(_DIST_DIR.resolve())`, raising 404 on `ValueError`.
+  This is the kind of bug that's invisible in normal use (every legitimate
+  request stays inside `web/dist/`) and only shows up under a deliberately
+  crafted path — exactly why it's worth a second look on any code that
+  builds a filesystem path from a URL segment.
+- **Indirect prompt injection via retrieved content (MEDIUM, fixed).** The
+  existing `check_prompt_injection()` only ran on the *user's* message —
+  RAG chunks and web search snippets/titles were embedded into the LLM
+  prompt unfiltered. A malicious PDF in the knowledge base, or a web page
+  ranking in DuckDuckGo results, could contain injection-shaped text (e.g.
+  `[INST] ignore your instructions [/INST]`) that would reach the model
+  as if it were trusted context. Rejecting the request outright (like
+  `check_prompt_injection` does for user input) isn't right here — that
+  would let one bad indexed document or search hit silently break answers
+  for everyone, a self-inflicted denial of service. Added
+  `neutralise_injection()` instead: same pattern list, but it *defuses*
+  matches in place (`pattern.sub("[filtered]", text)`) rather than raising.
+  Applied to RAG chunk text (`api/rag.py build_prompt`), web result
+  titles/snippets (`api/websearch.py build_web_prompt`), and the hybrid
+  mode's manual context assembly (`api/main.py`).
+- **Docker container ran as root (LOW, fixed).** No `USER` directive meant
+  the FastAPI process ran as root inside the container. Added a non-root
+  `jignasa` user (UID 1000, matching the typical first-user UID on
+  Linux/macOS so the bind-mounted `knowledge-base/`/`rag_index/` volumes
+  stay writable without extra config) — see `docs/DEPLOYMENT.md` for the
+  one-line `chown` fix if your host UID differs.
+- **Confirmed safe, no change needed:** CORS is restricted to the dev
+  origins only with no wildcard; all SQL in `api/db.py`/`api/cache.py` uses
+  parameterized queries (the one f-string is a hardcoded column name in a
+  schema migration, not user input); session IDs are validated against a
+  fixed `session_YYYYMMDD_HHMMSS_NNNNNN` regex before any DB lookup; no
+  hardcoded secrets anywhere in `api/`, `pipeline/`, or `scripts/`.
+- **Known, accepted gap:** `get_client_ip()` trusts `X-Forwarded-For`
+  unconditionally, so the per-IP rate limit is bypassable by anyone who can
+  set that header directly (true for any client not behind a trusted
+  reverse proxy that strips/overwrites it). Not fixed, because this is a
+  self-hosted, single-operator app by design — the realistic threat model
+  is "someone on my LAN spams my own server," not "anonymous internet
+  traffic behind an untrusted proxy." If you put this behind a public
+  reverse proxy, configure it to strip inbound `X-Forwarded-For` and set
+  its own.
 
 ## Known limitations (stated plainly, not hidden)
 

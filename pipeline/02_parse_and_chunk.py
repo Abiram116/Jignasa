@@ -56,7 +56,10 @@ def parse_one(pdf_path: Path) -> bool:
 def main() -> None:
     pdf_files = sorted(KB.glob("*.pdf"))
     if not pdf_files:
-        raise FileNotFoundError(f"No PDFs found in {KB}")
+        print(f"No PDFs found in {KB}.")
+        print("Add PDF files to knowledge-base/ first, then rerun this script.")
+        print("See knowledge-base/README.md for details.")
+        sys.exit(0)
 
     PARSED_MD.mkdir(parents=True, exist_ok=True)
 

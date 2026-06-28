@@ -14,6 +14,7 @@ Output: rag_index/corpus_profile.json + a printed summary table.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -66,7 +67,10 @@ def profile_pdf(pdf_path: Path) -> dict:
 def main() -> None:
     pdf_files = sorted(KB.glob("*.pdf"))
     if not pdf_files:
-        raise FileNotFoundError(f"No PDFs found in {KB}")
+        print(f"No PDFs found in {KB}.")
+        print("Add PDF files to knowledge-base/ first, then rerun this script.")
+        print("See knowledge-base/README.md for details.")
+        sys.exit(0)
 
     profiles = [profile_pdf(p) for p in pdf_files]
 

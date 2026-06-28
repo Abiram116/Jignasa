@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from ollama import chat
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from api import db, rag
 from api.cache import init_cache, get_cached, set_cached
-from api.config import OLLAMA_MODEL, TOP_K, WEB_SEARCH_RESULT_COUNT
+from api.config import TOP_K, WEB_SEARCH_RESULT_COUNT
 from api.evaluation import (
     EVAL_DESCRIPTION,
     EVAL_TYPE,
@@ -24,14 +26,19 @@ from api.evaluation import (
     stream_evaluation,
 )
 from api.intent import classify_intent, classify_intent_llm, run_guardrails
+from api.llm import stream_chat
 from api.rag import build_prompt, search_with_transform
 from api.security import (
     SecurityHeadersMiddleware,
     check_prompt_injection,
+    neutralise_injection,
     sanitise_text,
     validate_session_id,
 )
+from api.upload import list_knowledge_base_files, save_uploaded_pdf, stream_upload_and_reindex
 from api.websearch import build_web_prompt, web_search
+
+logger = logging.getLogger("jignasa")
 
 # ── Allowed origins ───────────────────────────────────────────────────
 _CORS_ORIGINS = [
@@ -51,11 +58,26 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc: Exception):
+    # Last-resort net: any exception that escapes a route handler without
+    # being caught lands here instead of FastAPI's default (which can
+    # include internal detail depending on config). Full detail goes to
+    # the server log only; the client gets a clean, generic message.
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong on the server. Please try again."})
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     mode: str = Field(default="auto")
     quoted_text: str | None = Field(default=None, max_length=1000)
     confirm_web_search: bool = Field(default=False)
+    # BYOK (bring your own key): used only for this request's chat() calls,
+    # never written to db.append_message, set_cached, or logs.
+    llm_provider: str = Field(default="ollama")
+    llm_api_key: str | None = Field(default=None, max_length=300)
+    llm_model: str | None = Field(default=None, max_length=100)
 
 
 class EvalRequest(BaseModel):
@@ -364,19 +386,19 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             prompt_tokens = 0
             completion_tokens = 0
             try:
-                for chunk in chat(
-                    model=OLLAMA_MODEL, messages=ollama_messages,
-                    stream=True, think=False,
-                    options={"temperature": 0.7, "num_predict": 600},
+                for chunk in stream_chat(
+                    ollama_messages, temperature=0.7, num_predict=600,
+                    provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
                 ):
-                    if chunk.message.content:
-                        answer_parts.append(chunk.message.content)
-                        yield _sse({"type": "token", "content": chunk.message.content})
+                    if chunk.content:
+                        answer_parts.append(chunk.content)
+                        yield _sse({"type": "token", "content": chunk.content})
                     if chunk.done:
-                        prompt_tokens = chunk.prompt_eval_count or 0
-                        completion_tokens = chunk.eval_count or 0
-            except Exception as exc:
-                yield _sse({"type": "error", "message": str(exc)})
+                        prompt_tokens = chunk.prompt_tokens
+                        completion_tokens = chunk.completion_tokens
+            except Exception:
+                logger.exception("LLM call failed in casual mode")
+                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
                 return
 
             answer = "".join(answer_parts).strip()
@@ -400,19 +422,19 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             prompt_tokens = 0
             completion_tokens = 0
             try:
-                for chunk in chat(
-                    model=OLLAMA_MODEL, messages=ollama_messages_web,
-                    stream=True, think=False,
-                    options={"temperature": 0.3, "num_predict": 900},
+                for chunk in stream_chat(
+                    ollama_messages_web, temperature=0.3, num_predict=900,
+                    provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
                 ):
-                    if chunk.message.content:
-                        answer_parts.append(chunk.message.content)
-                        yield _sse({"type": "token", "content": chunk.message.content})
+                    if chunk.content:
+                        answer_parts.append(chunk.content)
+                        yield _sse({"type": "token", "content": chunk.content})
                     if chunk.done:
-                        prompt_tokens = chunk.prompt_eval_count or 0
-                        completion_tokens = chunk.eval_count or 0
-            except Exception as exc:
-                yield _sse({"type": "error", "message": str(exc)})
+                        prompt_tokens = chunk.prompt_tokens
+                        completion_tokens = chunk.completion_tokens
+            except Exception:
+                logger.exception("LLM call failed in web mode")
+                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
                 return
 
             answer = "".join(answer_parts).strip()
@@ -428,8 +450,9 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         elif resolved_mode == "docs":
             try:
                 hits, _transformed = search_with_transform(body.message)
-            except FileNotFoundError as exc:
-                yield _sse({"type": "error", "message": str(exc)})
+            except FileNotFoundError:
+                logger.exception("Document index missing or unreadable in docs mode")
+                yield _sse({"type": "error", "message": "Your document index isn't built yet. Add PDFs and rebuild the index, or try again in a moment."})
                 return
 
             # ── Auto mode: ask before web searching if KB miss ──────
@@ -457,19 +480,19 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             prompt_tokens = 0
             completion_tokens = 0
             try:
-                for chunk in chat(
-                    model=OLLAMA_MODEL, messages=ollama_messages_rag,
-                    stream=True, think=False,
-                    options={"temperature": 0.2, "num_predict": 1000},
+                for chunk in stream_chat(
+                    ollama_messages_rag, temperature=0.2, num_predict=1000,
+                    provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
                 ):
-                    if chunk.message.content:
-                        answer_parts.append(chunk.message.content)
-                        yield _sse({"type": "token", "content": chunk.message.content})
+                    if chunk.content:
+                        answer_parts.append(chunk.content)
+                        yield _sse({"type": "token", "content": chunk.content})
                     if chunk.done:
-                        prompt_tokens = chunk.prompt_eval_count or 0
-                        completion_tokens = chunk.eval_count or 0
-            except Exception as exc:
-                yield _sse({"type": "error", "message": str(exc)})
+                        prompt_tokens = chunk.prompt_tokens
+                        completion_tokens = chunk.completion_tokens
+            except Exception:
+                logger.exception("LLM call failed in docs mode")
+                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
                 return
 
             answer = "".join(answer_parts).strip()
@@ -490,11 +513,13 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
                 try:
                     hits, _transformed = rag_future.result()
-                except FileNotFoundError as exc:
-                    yield _sse({"type": "error", "message": str(exc)})
+                except FileNotFoundError:
+                    logger.exception("Document index missing or unreadable in hybrid mode")
+                    yield _sse({"type": "error", "message": "Your document index isn't built yet. Add PDFs and rebuild the index, or try again in a moment."})
                     return
-                except Exception as exc:
-                    yield _sse({"type": "error", "message": f"RAG error: {str(exc)}"})
+                except Exception:
+                    logger.exception("Document search failed in hybrid mode")
+                    yield _sse({"type": "error", "message": "Something went wrong searching your documents. Please try again."})
                     return
 
                 web_degraded = False
@@ -509,12 +534,14 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
             doc_snippets = []
             for h in hits:
-                doc_snippets.append(f"[{h['source']} p.{h.get('page_number')}] {h['text']}")
+                doc_snippets.append(f"[{h['source']} p.{h.get('page_number')}] {neutralise_injection(h['text'])}")
             doc_context = "\n\n".join(doc_snippets) or "No relevant document chunks were found."
 
             web_snippets = []
             for i, r in enumerate(results, start=1):
-                web_snippets.append(f"[{i}] {r['title']}\nURL: {r['url']}\n{r['snippet']}")
+                web_snippets.append(
+                    f"[{i}] {neutralise_injection(r['title'])}\nURL: {r['url']}\n{neutralise_injection(r['snippet'])}"
+                )
             web_context = "\n\n".join(web_snippets) or "No web search results were found."
 
             hybrid_user_prompt = f"""Synthesize information from both the document context and web search results below to answer the question.
@@ -538,19 +565,19 @@ Answer:"""
             prompt_tokens = 0
             completion_tokens = 0
             try:
-                for chunk in chat(
-                    model=OLLAMA_MODEL, messages=ollama_messages_hybrid,
-                    stream=True, think=False,
-                    options={"temperature": 0.3, "num_predict": 1200},
+                for chunk in stream_chat(
+                    ollama_messages_hybrid, temperature=0.3, num_predict=1200,
+                    provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
                 ):
-                    if chunk.message.content:
-                        answer_parts.append(chunk.message.content)
-                        yield _sse({"type": "token", "content": chunk.message.content})
+                    if chunk.content:
+                        answer_parts.append(chunk.content)
+                        yield _sse({"type": "token", "content": chunk.content})
                     if chunk.done:
-                        prompt_tokens = chunk.prompt_eval_count or 0
-                        completion_tokens = chunk.eval_count or 0
-            except Exception as exc:
-                yield _sse({"type": "error", "message": str(exc)})
+                        prompt_tokens = chunk.prompt_tokens
+                        completion_tokens = chunk.completion_tokens
+            except Exception:
+                logger.exception("LLM call failed in hybrid mode")
+                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
                 return
 
             answer = "".join(answer_parts).strip()
@@ -576,8 +603,9 @@ def run_eval(body: EvalRequest) -> StreamingResponse:
         try:
             for event in stream_evaluation(k=body.k):
                 yield _sse(event)
-        except Exception as exc:
-            yield _sse({"type": "error", "message": str(exc)})
+        except Exception:
+            logger.exception("Evaluation run failed")
+            yield _sse({"type": "error", "message": "Something went wrong running the evaluation. Please try again."})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -606,6 +634,54 @@ def save_evaluation(body: SaveEvalRequest) -> dict:
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+# ── Knowledge-base upload ────────────────────────────────────────────────
+
+@app.get("/api/knowledge-base/files")
+def get_knowledge_base_files() -> list[dict]:
+    return list_knowledge_base_files()
+
+
+@app.post("/api/knowledge-base/upload")
+async def upload_knowledge_base_file(file: UploadFile = File(...)) -> StreamingResponse:
+    pdf_path = save_uploaded_pdf(file)
+
+    def event_stream() -> Iterator[str]:
+        for event in stream_upload_and_reindex(pdf_path):
+            yield _sse(event)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── Static frontend (Docker/self-host only) ─────────────────────────────
+# In local dev, the frontend runs separately via `vite dev` (run_all.sh) and
+# this block does nothing -- web/dist/ only exists after `npm run build`,
+# which the Dockerfile runs before this image is built. Registered last so
+# the catch-all route can never shadow an /api/* route defined above.
+_DIST_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+if _DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=_DIST_DIR / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str) -> FileResponse:
+        if full_path.startswith("api/"):
+            raise HTTPException(404, "Not found")
+        # `full_path` is attacker-controlled and Starlette's `:path` converter
+        # passes "../" segments through literally, so resolve() + relative_to()
+        # is required here -- without it, a request like /../../api/main.py
+        # escapes _DIST_DIR and serves arbitrary files on the host.
+        requested = (_DIST_DIR / full_path).resolve()
+        try:
+            requested.relative_to(_DIST_DIR.resolve())
+        except ValueError:
+            raise HTTPException(404, "Not found")
+        if requested.is_file():
+            return FileResponse(requested)
+        # React Router routes (e.g. /chat) aren't real files -- fall back
+        # to index.html so client-side routing can take over.
+        return FileResponse(_DIST_DIR / "index.html")
 
 
 def _linkify_web_citations(answer: str, web_sources: list[dict]) -> str:

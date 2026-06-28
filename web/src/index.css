@@ -1867,6 +1867,32 @@ tr:last-child td { border-bottom: none; }
   gap: 1rem;
 }
 
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.settings-field label {
+  font-size: 0.85rem;
+  color: var(--text-2);
+  font-weight: 500;
+}
+.settings-field select,
+.settings-field input {
+  background: var(--cosmos);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-md);
+  padding: 0.6rem 0.75rem;
+  color: var(--text-1);
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+.settings-field select:focus,
+.settings-field input:focus {
+  outline: none;
+  border-color: var(--border-2);
+}
+
 /* ════════════════════════════════════════════════════════════════════
    Cost Modal stats grid — 3-column, does NOT inherit homepage stats-grid
 ═══════════════════════════════════════════════════════════════════════ */
@@ -2178,9 +2204,15 @@ tr:last-child td { border-bottom: none; }
   background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%);
 }
 
-.btn-cta-primary:hover {
+.btn-cta-primary:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 8px 32px rgba(99,102,241,0.5);
+}
+
+.btn-cta-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-cta-secondary {

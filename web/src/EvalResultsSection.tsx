@@ -16,6 +16,12 @@ type LoadState = 'loading' | 'ready' | 'empty' | 'error'
 const RETRY_ATTEMPTS = 12
 const RETRY_DELAY_MS = 1200
 
+// GitHub Pages showcase build (`VITE_STATIC_DEMO=true npm run build`) has
+// no backend to fetch from -- it serves a frozen snapshot from the last
+// real evaluation run instead (web/public/eval-snapshot.json). Local/Docker
+// builds always fetch live from GET /api/evaluation/summary.
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
+
 /**
  * Homepage section showing the project's actual measured quality, fetched
  * live from GET /api/evaluation/summary rather than hardcoded -- so it
@@ -28,6 +34,26 @@ export function EvalResultsSection({ onLoaded }: { onLoaded?: () => void }) {
 
   useEffect(() => {
     let cancelled = false
+
+    if (STATIC_DEMO) {
+      fetch('/eval-snapshot.json')
+        .then((res) => res.json())
+        .then((result: EvaluationSummaryResponse) => {
+          if (cancelled) return
+          setData(result)
+          setStatus(result.retrieval || result.ragas ? 'ready' : 'empty')
+          onLoaded?.()
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setStatus('error')
+            onLoaded?.()
+          }
+        })
+      return () => {
+        cancelled = true
+      }
+    }
 
     const attempt = async (attemptsLeft: number): Promise<void> => {
       try {
