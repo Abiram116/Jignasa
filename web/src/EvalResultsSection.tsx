@@ -36,7 +36,7 @@ export function EvalResultsSection({ onLoaded }: { onLoaded?: () => void }) {
     let cancelled = false
 
     if (STATIC_DEMO) {
-      fetch('/eval-snapshot.json')
+      fetch(`${import.meta.env.BASE_URL}eval-snapshot.json`)
         .then((res) => res.json())
         .then((result: EvaluationSummaryResponse) => {
           if (cancelled) return

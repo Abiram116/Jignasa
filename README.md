@@ -1,8 +1,8 @@
 # Jignasa
 
-**Your own ChatGPT, running entirely on your laptop.**
+**A fully local AI assistant that reads your documents, searches the live web, and reasons over both — without a single byte leaving your machine.**
 
-Jignasa chats naturally, searches the live web, and answers questions about your own PDFs — all without sending a single byte to the cloud. No API keys, no subscriptions, no data leaving your machine.
+Jignasa is a complete RAG system built from first principles: a structure-aware document pipeline, a retrieval layer with measured (not assumed) accuracy, and a generation layer that's explicitly tuned to admit uncertainty rather than fabricate an answer. No API keys, no subscriptions, no cloud dependency by default.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)

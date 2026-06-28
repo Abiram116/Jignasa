@@ -35,7 +35,7 @@ from api.security import (
     sanitise_text,
     validate_session_id,
 )
-from api.upload import list_knowledge_base_files, save_uploaded_pdf, stream_upload_and_reindex
+from api.upload import list_knowledge_base_files, save_uploaded_pdf, stream_upload_and_reindex, delete_knowledge_base_file
 from api.websearch import build_web_prompt, web_search
 
 logger = logging.getLogger("jignasa")
@@ -641,6 +641,11 @@ def _sse(payload: dict) -> str:
 @app.get("/api/knowledge-base/files")
 def get_knowledge_base_files() -> list[dict]:
     return list_knowledge_base_files()
+
+@app.delete("/api/knowledge-base/files/{filename}")
+def delete_knowledge_base_file_route(filename: str) -> dict:
+    delete_knowledge_base_file(filename)
+    return {"ok": True}
 
 
 @app.post("/api/knowledge-base/upload")

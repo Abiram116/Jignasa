@@ -12,6 +12,12 @@ initial multi-PDF build and for full-recovery rebuilds (e.g. after deleting
 a .chunks.json to force a PDF to be reparsed) -- this worker is strictly
 additive and is only safe to use for chunks that aren't already indexed.
 
+Since 2026-06-28 the index is an IndexIDMap (see pipeline/REBUILD_LOG.md):
+every vector gets a stable integer ID, assigned here from metadata.json's
+"next_id" counter, rather than just being appended at whatever position
+happens to be next. That ID is what lets api/upload.py's delete surgically
+remove just this document's vectors later, instead of rebuilding.
+
 Usage: python _add_to_index.py <chunks_json_path>
 """
 
@@ -51,30 +57,38 @@ def main() -> None:
         encode_kwargs={"normalize_embeddings": True},
     )
 
+    print("[stage] embedding", flush=True)
     texts = [c["text"] for c in chunks]
     print(f"Embedding {len(texts)} new chunks ...")
     vectors = np.asarray(embeddings.embed_documents(texts), dtype=np.float32)
     faiss.normalize_L2(vectors)
 
+    metadata = {"next_id": 0, "vectors": {}}
+    if METADATA_PATH.exists():
+        metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
+
+    next_id = metadata["next_id"]
+    ids = np.arange(next_id, next_id + len(chunks), dtype=np.int64)
+
     if INDEX_PATH.exists():
         index = faiss.read_index(str(INDEX_PATH))
     else:
-        index = faiss.IndexFlatIP(vectors.shape[1])
-    index.add(vectors)
+        index = faiss.IndexIDMap(faiss.IndexFlatIP(vectors.shape[1]))
+    index.add_with_ids(vectors, ids)
 
+    print("[stage] storing", flush=True)
     INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_bytes_via(lambda tmp: faiss.write_index(index, str(tmp)), INDEX_PATH)
 
-    metadata = []
-    if METADATA_PATH.exists():
-        metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
-    metadata.extend(c["metadata"] | {"text": c["text"]} for c in chunks)
+    for vec_id, c in zip(ids.tolist(), chunks, strict=True):
+        metadata["vectors"][str(vec_id)] = c["metadata"] | {"text": c["text"]}
+    metadata["next_id"] = next_id + len(chunks)
     _atomic_write_bytes_via(
         lambda tmp: tmp.write_text(json.dumps(metadata, indent=2), encoding="utf-8"),
         METADATA_PATH,
     )
 
-    print(f"Added {len(chunks)} chunks. Index now has {index.ntotal} vectors.")
+    print(f"Added {len(chunks)} chunks (IDs {next_id}-{next_id + len(chunks) - 1}). Index now has {index.ntotal} vectors.")
 
 
 if __name__ == "__main__":

@@ -55,6 +55,24 @@ export async function renameConversation(id: string, title: string): Promise<voi
   if (!res.ok) throw new Error(await res.text())
 }
 
+export interface KBFile {
+  name: string
+  size_bytes: number
+}
+
+export async function getKnowledgeBaseFiles(): Promise<KBFile[]> {
+  const res = await fetch(`${API}/knowledge-base/files`)
+  if (!res.ok) throw new Error('Failed to fetch KB files')
+  return res.json()
+}
+
+export async function deleteKnowledgeBaseFile(filename: string): Promise<void> {
+  const res = await fetch(`${API}/knowledge-base/files/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error('Failed to delete file')
+}
+
 export async function fetchMessages(sessionId: string): Promise<{ title: string; messages: Message[] }> {
   const res = await fetch(`${API}/conversations/${sessionId}/messages`)
   return res.json()
@@ -72,7 +90,16 @@ export type ChatEvent =
 
 /** Shared line-buffering reader for any `text/event-stream` response body. */
 async function consumeSSE<E>(res: Response, onEvent: (event: E) => void): Promise<void> {
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) {
+    const text = await res.text()
+    try {
+      const json = JSON.parse(text)
+      if (json.detail) throw new Error(typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail))
+    } catch {
+      // Not JSON or no detail, just throw the text
+    }
+    throw new Error(text)
+  }
   const reader = res.body?.getReader()
   if (!reader) throw new Error('No response body')
   const decoder = new TextDecoder()
@@ -120,8 +147,12 @@ export async function streamChat(
 
 export type UploadEvent =
   | { type: 'start'; filename: string }
+  | { type: 'parsing' }
+  | { type: 'chunking' }
   | { type: 'parsed'; ok: boolean; message?: string }
   | { type: 'reindexing' }
+  | { type: 'embedding' }
+  | { type: 'storing' }
   | { type: 'done'; chunk_count: number }
   | { type: 'error'; message: string }
 

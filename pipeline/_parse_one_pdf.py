@@ -100,6 +100,7 @@ def main() -> None:
         }
     )
 
+    print("[stage] parsing", flush=True)
     result = converter.convert(pdf_path)
 
     PARSED_MD.mkdir(parents=True, exist_ok=True)
@@ -109,6 +110,7 @@ def main() -> None:
     chunker = HybridChunker()
     known_garbled = set(KNOWN_GARBLED_PAGES.get(pdf_path.name, []))
 
+    print("[stage] chunking", flush=True)
     chunks = []
     garbled_count = 0
     for i, chunk in enumerate(chunker.chunk(dl_doc=result.document), start=1):

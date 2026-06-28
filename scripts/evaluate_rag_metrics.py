@@ -59,33 +59,36 @@ class MetricsSummary:
         return out
 
 
-def load_index() -> tuple[faiss.IndexFlatIP, list[dict]]:
+def load_index() -> tuple[faiss.Index, dict[str, dict]]:
     if not INDEX_PATH.exists() or not METADATA_PATH.exists():
         raise FileNotFoundError(
-            f"Missing index in {RAG_INDEX_DIR}. Run rag_with_langchain.ipynb first."
+            f"Missing index in {RAG_INDEX_DIR}. Run pipeline/02_parse_and_chunk.py "
+            "and pipeline/03_build_index.py first."
         )
     index = faiss.read_index(str(INDEX_PATH))
     with METADATA_PATH.open("r", encoding="utf-8") as f:
         metadata = json.load(f)
-    return index, metadata
+    return index, metadata["vectors"]
 
 
 def search(
     query: str,
     *,
     k: int,
-    index: faiss.IndexFlatIP,
-    metadata: list[dict],
+    index: faiss.Index,
+    metadata: dict[str, dict],
     embeddings: HuggingFaceEmbeddings,
 ) -> list[dict]:
     query_vector = np.asarray([embeddings.embed_query(query)], dtype=np.float32)
     faiss.normalize_L2(query_vector)
-    scores, indices = index.search(query_vector, k)
+    scores, ids = index.search(query_vector, k)
     hits: list[dict] = []
-    for rank, (score, idx) in enumerate(zip(scores[0], indices[0], strict=True), start=1):
-        if idx == -1:
+    for rank, (score, vec_id) in enumerate(zip(scores[0], ids[0], strict=True), start=1):
+        if vec_id == -1:
             continue
-        item = metadata[idx]
+        item = metadata.get(str(vec_id))
+        if item is None:
+            continue
         hits.append(
             {
                 "rank": rank,

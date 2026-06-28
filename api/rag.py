@@ -33,7 +33,7 @@ def index_ready() -> bool:
 def index_status() -> dict:
     chunk_count = 0
     if METADATA_PATH.exists():
-        chunk_count = len(json.loads(METADATA_PATH.read_text(encoding="utf-8")))
+        chunk_count = len(json.loads(METADATA_PATH.read_text(encoding="utf-8"))["vectors"])
     return {
         "ready": index_ready(),
         "chunk_count": chunk_count,
@@ -44,7 +44,15 @@ def index_status() -> dict:
     }
 
 
-def load_index() -> tuple[faiss.IndexFlatIP, list[dict]]:
+def load_index() -> tuple[faiss.Index, dict[str, dict]]:
+    """
+    Returns (index, vectors) where `vectors` maps a vector's FAISS ID
+    (as a string key, since JSON object keys are always strings) to its
+    chunk metadata. The index is an IndexIDMap, so index.search() below
+    returns these same IDs directly -- not positions -- which is what
+    lets api/upload.py delete a document's vectors by ID without
+    rebuilding (see pipeline/REBUILD_LOG.md, 2026-06-28).
+    """
     if not index_ready():
         raise FileNotFoundError(
             f"No index in `{RAG_INDEX}`. Run `pipeline/02_parse_and_chunk.py` "
@@ -52,21 +60,23 @@ def load_index() -> tuple[faiss.IndexFlatIP, list[dict]]:
         )
     index = faiss.read_index(str(INDEX_PATH))
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
-    return index, metadata
+    return index, metadata["vectors"]
 
 
 def search(query: str, k: int = TOP_K) -> list[dict]:
     """Search FAISS using the raw query string."""
-    index, metadata = load_index()
+    index, vectors = load_index()
     emb = _embeddings()
     qv = np.asarray([emb.embed_query(query)], dtype=np.float32)
     faiss.normalize_L2(qv)
-    scores, indices = index.search(qv, k)
+    scores, ids = index.search(qv, k)
     hits: list[dict] = []
-    for rank, (score, idx) in enumerate(zip(scores[0], indices[0], strict=True), start=1):
-        if idx == -1:
+    for rank, (score, vec_id) in enumerate(zip(scores[0], ids[0], strict=True), start=1):
+        if vec_id == -1:
             continue
-        item = metadata[idx]
+        item = vectors.get(str(vec_id))
+        if item is None:
+            continue
         hits.append(
             {
                 "rank": rank,
