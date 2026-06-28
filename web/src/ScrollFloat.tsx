@@ -24,9 +24,16 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
 
   const splitText = useMemo<ReactNode>(
     () =>
-      children.split('').map((char, index) => (
-        <span className="sf-char" key={index}>
-          {char === ' ' ? ' ' : char}
+      children.split(' ').map((word, wordIndex, wordsArray) => (
+        <span className="sf-word" key={wordIndex} style={{ display: 'inline-block', whiteSpace: 'nowrap' }}>
+          {word.split('').map((char, charIndex) => (
+            <span className="sf-char" key={charIndex} style={{ display: 'inline-block' }}>
+              {char}
+            </span>
+          ))}
+          {wordIndex < wordsArray.length - 1 && (
+            <span className="sf-char" style={{ display: 'inline-block' }}>&nbsp;</span>
+          )}
         </span>
       )),
     [children],
@@ -58,12 +65,6 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
           stagger,
           scrollTrigger: {
             trigger: el,
-            // This app's real scroll container is #root (overflow: auto),
-            // not the browser window (body has overflow: hidden) -- ScrollTrigger
-            // defaults to listening to window scroll, which never fires here.
-            // Without this, the trigger silently never updates after its
-            // initial (scrollTop=0) calculation.
-            scroller: '#root',
             start: 'top bottom-=10%',
             end: 'bottom center',
             scrub: true,

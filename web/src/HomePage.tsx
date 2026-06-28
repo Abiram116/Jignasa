@@ -351,7 +351,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       {STATIC_DEMO && <StaticShowcaseSection />}
 
       {/* ── Agent manifesto ── */}
-      <section className="manifesto-section" style={{ padding: 0 }}>
+      <section className="manifesto-section">
         <motion.div 
           style={{ width: '100%', maxWidth: 'none', background: 'transparent', border: 'none', padding: '0 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4rem' }}
           initial={{ opacity: 0, scale: 0.95, filter: 'blur(8px)' }}
@@ -359,7 +359,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
           viewport={{ once: true, amount: 0.2 }}
           transition={{ type: 'spring', bounce: 0, duration: 1.5 }}
         >
-          <div style={{ position: 'relative', width: '90vw', maxWidth: '1000px', height: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'relative', width: '90%', maxWidth: '900px', aspectRatio: '4 / 1', minHeight: '80px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TextPressure
               text="JIGNASA"
               fontFamily="Outfit, sans-serif"
@@ -372,7 +372,7 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
               italic={true}
               textColor="#ffffff"
               strokeColor="#5227FF"
-              minFontSize={60}
+              minFontSize={36}
             />
           </div>
           
