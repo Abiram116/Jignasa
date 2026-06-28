@@ -209,11 +209,10 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
   }
 
   const itemVariants: Variants = {
-    hidden: { opacity: 0, y: 20, filter: 'blur(6px)' },
+    hidden: { opacity: 0, y: 20 },
     show: {
       opacity: 1,
       y: 0,
-      filter: 'blur(0px)',
       transition: { type: 'spring', bounce: 0, duration: 1.0 },
     },
   }
@@ -354,8 +353,8 @@ export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations 
       <section className="manifesto-section">
         <motion.div 
           style={{ width: '100%', maxWidth: 'none', background: 'transparent', border: 'none', padding: '0 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4rem' }}
-          initial={{ opacity: 0, scale: 0.95, filter: 'blur(8px)' }}
-          whileInView={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ type: 'spring', bounce: 0, duration: 1.5 }}
         >
