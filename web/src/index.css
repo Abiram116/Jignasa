@@ -2097,7 +2097,7 @@ tr:last-child td { border-bottom: none; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 4rem 2rem 8rem 2rem;
   text-align: center;
 }
 
