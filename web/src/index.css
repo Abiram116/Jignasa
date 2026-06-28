@@ -111,7 +111,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   position: relative;
-  overflow-x: hidden;
 }
 
 /* Subtle grain so the dark base reads as textured depth rather than a flat
@@ -2073,7 +2072,6 @@ tr:last-child td { border-bottom: none; }
 .homepage {
   min-height: 100vh;
   position: relative;
-  overflow-x: hidden;
   /* overflow-y intentionally NOT set here — #root is the scroll container.
      Lenis (SmoothScroll.tsx) binds to #root; ScrollTrigger uses scroller:'#root'.
      If .homepage also overflows, the user scrolls .homepage instead of #root
@@ -2092,13 +2090,13 @@ tr:last-child td { border-bottom: none; }
 /* Hero section */
 .hero {
   position: relative;
+  width: 100%;
+  min-height: 100svh;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  min-height: 100vh;
   padding: 2rem;
   text-align: center;
 }

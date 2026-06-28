@@ -96,7 +96,12 @@ export function StaticShowcaseSection() {
         </p>
         <ScrollReveal>
           <div className="hero-actions" style={{ justifyContent: 'center' }}>
-            <a className="btn-cta-primary" href={`https://mail.google.com/mail/?view=cm&fs=1&to=${EMAIL}`} target="_blank" rel="noopener noreferrer">
+            <a 
+              className="btn-cta-primary" 
+              href={typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `mailto:${EMAIL}` : `https://mail.google.com/mail/?view=cm&fs=1&to=${EMAIL}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
               ✉️ Send Email
             </a>
             <a className="btn-cta-secondary" href={REPO_URL} target="_blank" rel="noopener noreferrer">

@@ -41,7 +41,7 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
 
   useEffect(() => {
     const el = containerRef.current
-    if (!el || reduce) return
+    if (!el) return
 
     let cancelled = false
     let cleanup = () => {}
@@ -87,7 +87,7 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
   const Tag = as
   return (
     <Tag ref={containerRef} className={`scroll-float ${containerClassName}`}>
-      {reduce ? children : splitText}
+      {splitText}
     </Tag>
   )
 }

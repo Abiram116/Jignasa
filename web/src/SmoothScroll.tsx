@@ -19,7 +19,6 @@ export function SmoothScroll() {
   const reduce = useReducedMotion()
 
   useEffect(() => {
-    if (reduce) return
     const root = document.querySelector<HTMLElement>('#root')
     if (!root) return
 
@@ -33,9 +32,7 @@ export function SmoothScroll() {
       smoothWheel: true,
       touchMultiplier: 2,
       wheelMultiplier: 1,
-      lerp: 0.1,
-      syncTouch: true,
-      syncTouchLerp: 0.075,
+      lerp: 0.1
     })
     lenis = lenisInstance
 
