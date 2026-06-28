@@ -80,7 +80,7 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
       cancelled = true
       cleanup()
     }
-  }, [reduce, stagger])
+  }, [stagger])
 
   const Tag = as
   return (
