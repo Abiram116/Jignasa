@@ -46,18 +46,21 @@ export function StickyPipeline({ steps }: { steps: Step[] }) {
           </>
         )
 
-        if (reduce) {
-          return <div className={`step-item step-item-${i % 2 === 0 ? 'left' : 'right'}`} key={s.title}>{content}</div>
+        const transition: Transition = {
+          type: 'spring',
+          damping: 20,
+          stiffness: 100,
+          restDelta: 0.001
         }
 
         return (
           <motion.div
             className={`step-item step-item-${i % 2 === 0 ? 'left' : 'right'}`}
             key={s.title}
-            initial={{ opacity: 0, x: fromSide, scale: 0.95, filter: 'blur(4px)' }}
-            whileInView={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ type: 'spring', bounce: 0, duration: 1.0 } as Transition}
+            initial={{ opacity: 0, x: fromSide, scale: 0.95 }}
+            whileInView={{ opacity: 1, x: 0, scale: 1 }}
+            viewport={{ once: true, margin: '-10%' }}
+            transition={transition}
           >
             {content}
           </motion.div>
