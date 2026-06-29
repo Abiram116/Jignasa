@@ -6,8 +6,10 @@
 // progress through the viewport, not `pin: true` with an endTrigger handed
 // off to a different element. It never reserves/un-reserves layout space,
 // so there's no equivalent failure mode for blank gaps.
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { motion } from 'motion/react'
+import { isLowPowerDevice, subscribeLowPowerDevice } from './deviceTier'
 import './ScrollFloat.css'
 
 interface ScrollFloatProps {
@@ -17,8 +19,16 @@ interface ScrollFloatProps {
   stagger?: number
 }
 
+const MOTION_TAG = { h2: motion.h2, h3: motion.h3 }
+
 export default function ScrollFloat({ children, as = 'h2', containerClassName = '', stagger = 0.025 }: ScrollFloatProps) {
   const containerRef = useRef<HTMLHeadingElement>(null)
+  // Starts as the fast static-heuristic guess, then updates (re-rendering,
+  // and tearing down any active GSAP tween via the effect below) once the
+  // real frame-rate measurement resolves a few hundred ms after load --
+  // see deviceTier.ts for why a one-time guess at mount isn't enough.
+  const [lowPower, setLowPower] = useState(() => isLowPowerDevice())
+  useEffect(() => subscribeLowPowerDevice(setLowPower), [])
 
   const splitText = useMemo<ReactNode>(
     () =>
@@ -38,6 +48,13 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
   )
 
   useEffect(() => {
+    // Skip the whole per-character GSAP scrub setup on weaker hardware --
+    // not just lighter, but a different code path entirely: no GSAP
+    // bundle import/execution, no dozens of individually-tweened+layered
+    // characters, no scroll-tick recalculation. Falls back to the single
+    // whileInView fade rendered below instead.
+    if (lowPower) return
+
     const el = containerRef.current
     if (!el) return
 
@@ -49,7 +66,31 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
       const { ScrollTrigger } = await import('gsap/ScrollTrigger')
       gsap.registerPlugin(ScrollTrigger)
 
+      // Wait for web fonts before measuring -- ScrollTrigger reads the
+      // element's position/size at creation time. If a custom font (e.g.
+      // Fraunces/Outfit) finishes loading and reflows the heading *after*
+      // that measurement, the trigger's start/end bounds go stale: the
+      // scrub animation maps to the wrong scroll range and most characters
+      // never reach their "revealed" state, which is what showed up as
+      // headings rendering as just one or two stray letters. This only
+      // happened intermittently because it's a race against font load
+      // time, which varies by network/device speed.
+      if (document.fonts?.ready) {
+        await document.fonts.ready
+      }
+      if (cancelled) return
+
       const chars = el.querySelectorAll('.sf-char')
+      // will-change is applied/removed here (not as a permanent CSS rule)
+      // so each character is only a separate GPU-promoted layer while its
+      // reveal is actually active. Left on permanently, every heading on
+      // the page keeps dozens of small layers alive for as long as the
+      // page is open -- a real cost on weaker mobile GPUs, compounding
+      // with everything else animating (the canvas star field, ambient
+      // orbs, Lenis/ScrollTrigger scroll updates) into visible jank.
+      const promote = () => gsap.set(chars, { willChange: 'transform, opacity' })
+      const demote = () => gsap.set(chars, { willChange: 'auto' })
+
       const tween = gsap.fromTo(
         chars,
         { opacity: 0, yPercent: 80, scaleY: 1.6, scaleX: 0.85, transformOrigin: '50% 100%' },
@@ -66,6 +107,10 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
             start: 'top bottom-=10%',
             end: 'bottom center',
             scrub: true,
+            onEnter: promote,
+            onEnterBack: promote,
+            onLeave: demote,
+            onLeaveBack: demote,
           },
         },
       )
@@ -80,7 +125,22 @@ export default function ScrollFloat({ children, as = 'h2', containerClassName = 
       cancelled = true
       cleanup()
     }
-  }, [stagger])
+  }, [stagger, lowPower])
+
+  if (lowPower) {
+    const MotionTag = MOTION_TAG[as]
+    return (
+      <MotionTag
+        className={`scroll-float ${containerClassName}`}
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.3 }}
+        transition={{ duration: 0.5 }}
+      >
+        {children}
+      </MotionTag>
+    )
+  }
 
   const Tag = as
   return (

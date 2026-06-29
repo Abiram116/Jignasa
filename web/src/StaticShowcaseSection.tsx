@@ -6,28 +6,34 @@ const EMAIL = 'sreeabirammandava@gmail.com'
 
 const decisions = [
   {
-    title: 'Exact search, then ID-mapped for O(1) deletes',
-    body: "Retrieval runs on FAISS's IndexFlatIP — exact brute-force cosine search, not an approximate index. At this corpus size (a few thousand chunks), exact search is sub-millisecond with zero recall loss; HNSW/IVF only earn their keep past roughly 100K vectors, where they'd be trading accuracy for speed that isn't needed yet. The index is wrapped in an IndexIDMap so every vector carries a stable ID — deleting a document removes exactly its vectors via index.remove_ids(), independent of how many other documents exist, instead of re-embedding the whole corpus on every delete.",
+    title: 'Finding answers is instant — and stays instant as the library grows',
+    summary: 'Searching your documents is both exact and fast, and deleting a document never slows the system down, no matter how many others exist.',
+    detail: "Technically: retrieval uses FAISS's exact search (IndexFlatIP), which at this scale is both faster and more accurate than the \"approximate\" alternatives. Every chunk also carries a stable ID, so deleting a document removes exactly its IDs in one step instead of rebuilding the entire search index from scratch.",
   },
   {
-    title: 'Process-per-document parsing, not a long-lived worker',
-    body: "Docling's layout model doesn't fully release memory between documents in the same process. Each PDF is parsed in its own subprocess, so the OS reclaims everything when it exits — a crash or leak on one document can't degrade the next, and a failed parse is reported as failed, never silently downgraded to a worse extraction. Uploads and incremental index updates follow the same isolation, which keeps the long-lived API server's memory flat regardless of session length.",
+    title: "One bad PDF can't bring anything else down",
+    summary: "If a document is huge, corrupted, or weird, only that one upload fails — it can't crash or slow down the rest of the app.",
+    detail: 'Technically: each PDF is parsed in its own disposable process, so a memory leak or crash in the parsing library is contained and reclaimed by the OS when it exits, rather than accumulating in the long-running server. A failed parse is reported as failed, never silently swapped for a worse result.',
   },
   {
-    title: 'Structural chunking, not length-based splitting',
-    body: 'Chunks come from a layout-aware parser that tracks page numbers and section headings, not a fixed-character splitter. An earlier iteration silently fell back to length-based splitting whenever the structural parser failed on a large PDF — no error, just lower-quality chunks for 94% of one corpus. That failure mode is now impossible: a parse failure is surfaced, not masked by a fallback path.',
+    title: "Answers can point to the exact page they came from",
+    summary: 'Citations say "page 12 of this PDF," not just "somewhere in this document" — because the system actually understands document structure.',
+    detail: "Technically: text is split using the document's real layout (headings, sections, pages), not a fixed-character cut. An earlier version silently fell back to character-based splitting whenever the smarter parser failed — quietly lowering quality for 94% of one test corpus with no visible error. That failure mode is now impossible: a parse failure is always surfaced.",
   },
   {
-    title: 'Verified, not just shipped',
-    body: 'Retrieval quality is measured with Hit@k, MRR, and nDCG against a held-out question set; generation quality is scored with RAGAS using a local judge model. Both are shown live on this page, sourced from the same evaluation pipeline rather than a one-time number written into a README.',
+    title: 'The accuracy numbers on this page are measured, not guessed',
+    summary: "Retrieval accuracy and answer quality are both benchmarked against real test questions and shown live above, not just asserted.",
+    detail: 'Technically: retrieval is scored with Hit@k, MRR, and nDCG; generated answers are scored with RAGAS using a local judge model. Both come from the same evaluation pipeline that produced the numbers shown live on this page.',
   },
   {
-    title: 'Defense-in-depth on the parts that touch untrusted input',
-    body: "User input runs through structural and substring injection checks before reaching the model. Content the model didn't author — retrieved document chunks, web search results — is separately sanitized before being embedded into a prompt, since a malicious PDF or web page is a different threat model than a malicious user message and deserves a different response (defuse in place, not reject the whole request). A path-traversal issue in the static file route was caught in a self-review pass and fixed before it shipped.",
+    title: "The app doesn't blindly trust what it reads",
+    summary: 'Whether it comes from you, your documents, or the open web, content is checked before it can influence what the model says.',
+    detail: "Technically: user messages are checked for prompt-injection attempts before reaching the model. Separately, text the model didn't author — retrieved document chunks, web search results — is sanitized before being used, since a malicious PDF or web page warrants defusing in place rather than rejecting the whole request. A real path-traversal bug was found in a security review and fixed before release.",
   },
   {
-    title: 'Bring-your-own-key, with the key never persisted',
-    body: 'An optional cloud fallback (OpenAI, Anthropic, Gemini) lets someone try the system without running a local model. The key lives in the browser only, is attached per-request, and is never written to the chat database or server logs — verified directly, not just assumed, by tracing every code path the key touches.',
+    title: 'Bring your own API key, and it never gets stored anywhere',
+    summary: 'If you choose to use a cloud model (OpenAI/Anthropic/Gemini) instead of the local one, your key stays in your browser and is never saved to a database or log file.',
+    detail: 'Technically: the key is attached fresh to each request and never written to disk — verified by tracing every code path the key touches, not just assumed correct.',
   },
 ]
 
@@ -65,18 +71,25 @@ export function StaticShowcaseSection() {
 
       <section className="how-section">
         <p className="section-eyebrow">Engineering decisions</p>
-        <ScrollFloat containerClassName="section-title">Built around real failure modes</ScrollFloat>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '3.5rem', marginTop: '4rem', maxWidth: '800px', margin: '4rem auto 0 auto' }}>
+        <ScrollFloat containerClassName="section-title">Built around real problems, not a feature list</ScrollFloat>
+        <p className="section-lead" style={{ maxWidth: '700px' }}>
+          Each one in plain language first — the "technically" line underneath
+          is for anyone who wants the implementation detail.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3.5rem', marginTop: '3rem', maxWidth: '800px', margin: '3rem auto 0 auto' }}>
           {decisions.map((d) => (
             <ScrollReveal key={d.title}>
               <div style={{ paddingLeft: '1.5rem', borderLeft: '2px solid var(--border-1)', position: 'relative' }}>
                 <div style={{ position: 'absolute', left: '-5px', top: '8px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--indigo-400)', boxShadow: '0 0 10px var(--indigo-400)' }} />
-                <h3 style={{ fontSize: '1.25rem', fontFamily: 'Outfit, sans-serif', color: 'var(--text-1)', marginBottom: '0.75rem', fontWeight: 500, letterSpacing: '-0.01em' }}>
+                <h3 style={{ fontSize: '1.25rem', fontFamily: 'Outfit, sans-serif', color: 'var(--text-1)', marginBottom: '0.6rem', fontWeight: 500, letterSpacing: '-0.01em' }}>
                   {d.title}
                 </h3>
-                <p style={{ color: 'var(--text-3)', fontSize: '0.9rem', lineHeight: 1.7 }}>
-                  {d.body}
+                <p style={{ color: 'var(--text-2)', fontSize: '0.95rem', lineHeight: 1.7, marginBottom: '0.75rem' }}>
+                  {d.summary}
+                </p>
+                <p style={{ color: 'var(--text-4)', fontSize: '0.82rem', lineHeight: 1.6 }}>
+                  {d.detail}
                 </p>
               </div>
             </ScrollReveal>
