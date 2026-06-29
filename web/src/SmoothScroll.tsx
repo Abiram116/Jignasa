@@ -2,14 +2,19 @@ import { useEffect } from 'react'
 import Lenis from 'lenis'
 
 /**
- * Global smooth-scroll for the homepage, bound to the real scroll
- * container (#root -- body has overflow:hidden, see ScrollFloat.tsx for
- * why that matters). This is the standard GSAP+Lenis integration: Lenis
- * drives the scroll physics, GSAP's ticker drives Lenis's RAF loop, and
- * ScrollTrigger is told to recompute on every Lenis scroll tick. Any
- * ScrollTrigger elsewhere on the page (ScrollFloat headings) that points
- * `scroller: '#root'` automatically stays in sync with this -- no per
- * component smooth-scroll setup needed.
+ * Global smooth-scroll for the homepage, bound to native window scroll
+ * (Lenis has no `wrapper` option set, so it defaults to window -- this
+ * also lets Motion's `whileInView` triggers, which watch the real window
+ * scroll, fire correctly). This is the standard GSAP+Lenis integration:
+ * Lenis drives the scroll physics, GSAP's ticker drives Lenis's RAF loop,
+ * and ScrollTrigger is told to recompute on every Lenis scroll tick.
+ *
+ * Also refreshes ScrollTrigger on window resize. This matters specifically
+ * on mobile: Chrome/Safari's address bar collapsing and expanding as you
+ * scroll changes the viewport height without a page reload, which can
+ * leave ScrollTrigger holding stale trigger positions mid-session --
+ * visible as a blank gap at the bottom of the page that "snaps" back to
+ * normal once something forces a recalculation.
  *
  * Mounted once at the top of HomePage; destroyed on unmount (leaving /chat
  * on native scroll, untouched).
@@ -23,6 +28,7 @@ export function SmoothScroll() {
     let lenis: Lenis | null = null
     let cancelled = false
     let tick: ((time: number) => void) | null = null
+    let handleResize: (() => void) | null = null
 
     const lenisInstance = new Lenis({
       duration: 1.1,
@@ -46,12 +52,18 @@ export function SmoothScroll() {
       tick = (time: number) => lenisInstance.raf(time * 1000)
       gsap.ticker.add(tick)
       gsap.ticker.lagSmoothing(0)
+
+      handleResize = () => ScrollTrigger.refresh()
+      window.addEventListener('resize', handleResize)
     })
 
     return () => {
       cancelled = true
       if (tick) {
         import('gsap').then(({ gsap }) => gsap.ticker.remove(tick!))
+      }
+      if (handleResize) {
+        window.removeEventListener('resize', handleResize)
       }
       lenis?.destroy()
     }

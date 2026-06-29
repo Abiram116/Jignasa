@@ -1,9 +1,14 @@
 /* Adapted from react-bits ScrollFloat (MIT+Commons Clause). */
 .scroll-float {
   overflow: hidden;
+  /* Descenders (g, j, p, q, y) extend below the text baseline. Without
+     this, the tight overflow:hidden box (sized to the line box) clips
+     them off -- visible as letters missing their bottom curve/tail. */
+  padding-bottom: 0.2em;
 }
 
 .sf-char {
   display: inline-block;
-  will-change: transform, opacity;
+  /* will-change is toggled in ScrollFloat.tsx only while the reveal
+     animation is active, not set permanently here -- see that file. */
 }

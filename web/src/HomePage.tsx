@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import type { Variants } from 'motion/react'
 import ShinyText from './ShinyText'
@@ -10,6 +10,7 @@ import TextPressure from './TextPressure'
 import { StickyPipeline } from './StickyPipeline'
 import { EvalResultsSection } from './EvalResultsSection'
 import { StaticShowcaseSection } from './StaticShowcaseSection'
+import { isLowPowerDevice, subscribeLowPowerDevice } from './deviceTier'
 
 interface HomePageProps {
   onEnter: () => void
@@ -25,6 +26,8 @@ const REPO_URL = 'https://github.com/Abiram116/Jignasa'
 /* ── Star field ── */
 function StarField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [lowPower, setLowPower] = useState(() => isLowPowerDevice())
+  useEffect(() => subscribeLowPowerDevice(setLowPower), [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -53,7 +56,12 @@ function StarField() {
     resize()
     window.addEventListener('resize', resize)
 
-    for (let i = 0; i < 280; i++) {
+    // Each star is its own arc()+fill() call, every frame, forever -- on a
+    // weaker CPU this adds up fast alongside everything else animating on
+    // this page. Cut the count substantially rather than trim it everywhere
+    // a little; the visual difference is minor at this density either way.
+    const starCount = lowPower ? 70 : 280
+    for (let i = 0; i < starCount; i++) {
       const colorIdx = Math.floor(Math.random() * STAR_COLORS.length)
       stars.push({
         x: Math.random() * canvas.width,
@@ -84,7 +92,7 @@ function StarField() {
       window.removeEventListener('resize', resize)
       cancelAnimationFrame(animId)
     }
-  }, [])
+  }, [lowPower])
 
   return (
     <canvas
@@ -193,6 +201,21 @@ const steps = [
 
 export default function HomePage({ onEnter, onEvalLoaded, triggerHeroAnimations = false }: HomePageProps) {
   const featuresRef = useRef<HTMLDivElement>(null)
+
+  // Flags the document root -- not just once at mount, but reactively as
+  // the real frame-rate measurement resolves a few hundred ms later (see
+  // deviceTier.ts) -- so any CSS (ambient orbs, aurora bands) can freeze
+  // its own always-on decorative animations for weaker devices without
+  // every component needing its own device check.
+  useEffect(() => {
+    const unsubscribe = subscribeLowPowerDevice((lowPower) => {
+      document.documentElement.classList.toggle('low-power', lowPower)
+    })
+    return () => {
+      unsubscribe()
+      document.documentElement.classList.remove('low-power')
+    }
+  }, [])
 
   const handleEnter = STATIC_DEMO
     ? () => window.open(REPO_URL, '_blank', 'noopener,noreferrer')
