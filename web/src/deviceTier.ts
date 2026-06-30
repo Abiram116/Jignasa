@@ -37,17 +37,29 @@ function staticHeuristic(): boolean {
   return false
 }
 
-function measureFrameRate(durationMs = 600): Promise<boolean> {
+function measureFrameRate(durationMs = 600, warmupFrames = 10): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof requestAnimationFrame === 'undefined') {
       resolve(false)
       return
     }
+    let warmup = 0
     let frames = 0
-    const start = performance.now()
-    const tick = () => {
+    let start = 0
+    const tick = (now: number) => {
+      // Discard the first several frames before timing anything -- a rAF
+      // loop's own first callbacks are irregular on essentially every
+      // device (still settling into the browser's steady frame cadence),
+      // so counting them in would bias the result low independent of
+      // actual hardware capability.
+      if (warmup < warmupFrames) {
+        warmup++
+        if (warmup === warmupFrames) start = now
+        requestAnimationFrame(tick)
+        return
+      }
       frames++
-      const elapsed = performance.now() - start
+      const elapsed = now - start
       if (elapsed < durationMs) {
         requestAnimationFrame(tick)
       } else {
@@ -68,7 +80,34 @@ function notify(value: boolean) {
   for (const listener of listeners) listener(value)
 }
 
-function start() {
+/** Waits for the page to be reasonably settled before measuring -- running
+ * the sample during initial page load (fonts loading, GSAP/Lenis dynamic
+ * imports, React still rendering the rest of the tree, the canvas star
+ * field initializing) measures that startup contention, not steady-state
+ * rendering performance, and produces false positives on capable devices
+ * (confirmed: a flagship Android phone in Chrome was being flagged
+ * low-power purely from measurement timing, not actual hardware limits). */
+function waitForIdlePeriod(): Promise<void> {
+  return new Promise((resolveIdle) => {
+    const afterLoad = () => {
+      const ric = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback
+      if (ric) {
+        ric(() => resolveIdle(), { timeout: 1500 })
+      } else {
+        // Safari has no requestIdleCallback -- a fixed delay after load is
+        // the next best thing.
+        setTimeout(resolveIdle, 800)
+      }
+    }
+    if (document.readyState === 'complete') {
+      afterLoad()
+    } else {
+      window.addEventListener('load', afterLoad, { once: true })
+    }
+  })
+}
+
+async function start() {
   if (started) return
   started = true
 
@@ -76,20 +115,22 @@ function start() {
     notify(true)
     return
   }
-  measureFrameRate().then(notify)
+  await waitForIdlePeriod()
+  const lowPower = await measureFrameRate()
+  notify(lowPower)
 }
 
 /** Synchronous best-guess: the static heuristic until the real frame-rate
  * measurement resolves (~600ms after first call), then the measured result. */
 export function isLowPowerDevice(): boolean {
-  start()
+  void start()
   return resolved ?? staticHeuristic()
 }
 
 /** Subscribes to the eventual measured result. Calls back immediately with
  * the current best guess, then again once (if) the measurement changes it. */
 export function subscribeLowPowerDevice(listener: Listener): () => void {
-  start()
+  void start()
   listeners.push(listener)
   if (resolved !== null) listener(resolved)
   return () => {

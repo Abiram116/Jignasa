@@ -98,7 +98,12 @@
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { /* scroll-behavior managed by Lenis natively */ }
+/* Safari's elastic overscroll ("rubber-band" bounce past the top/bottom
+   edge) reveals <html>'s background, not <body>'s -- without this, that
+   bounce flashes white/default instead of the dark theme. Chrome on
+   Android doesn't bounce the same way, which is why this only shows up
+   in Safari. */
+html { background: var(--void); }
 html, body { min-height: 100%; }
 #root { min-height: 100vh; display: flex; flex-direction: column; }
 
@@ -2288,7 +2293,12 @@ tr:last-child td { border-bottom: none; }
 /* Scroll indicator — glowing pill */
 .scroll-hint {
   position: absolute;
-  bottom: 2.5rem;
+  /* env(safe-area-inset-bottom) is iOS Safari's reserved space for its
+     bottom toolbar/home indicator -- 0 on devices that don't need it
+     (Android Chrome, older iPhones), the actual reserved height on ones
+     that do. Without this, Safari's toolbar can sit on top of/cover this
+     button even though it's technically still "in" the page layout. */
+  bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px));
   left: 0;
   right: 0;
   margin: 0 auto;
@@ -2334,7 +2344,7 @@ tr:last-child td { border-bottom: none; }
 
 @media (max-width: 480px) {
   .scroll-hint {
-    bottom: 1.5rem;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
     padding: 0.5rem 1rem;
     font-size: 0.62rem;
     gap: 0.3rem;
