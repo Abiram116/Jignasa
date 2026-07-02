@@ -76,3 +76,12 @@ WEB_SEARCH_RESULT_COUNT = 8     # number of DDG results to fetch
 RAG_CACHE_TTL_HOURS = 24 * 7    # 7 days
 WEB_CACHE_TTL_HOURS = 6         # 6 hours
 
+# ── Adaptive ReAct agent loop ────────────────────────────────────────
+MAX_REACT_ITERATIONS = 3           # hard cap on tool-call/observe rounds before forcing an answer
+AGENT_DECISION_NUM_PREDICT = 150   # decision call must fit a query + reasoning string, not just a label
+
+# ── Persistent memory ────────────────────────────────────────────────
+MAX_MEMORY_ITEMS = 20            # most-recent memories injected into system prompts
+MEMORY_MODEL_NUM_PREDICT = 160   # extraction can return multiple facts, needs more than a single label
+MEMORY_MANAGE_LIMIT = 500        # cap for the "view/manage all memories" endpoint
+

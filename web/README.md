@@ -118,6 +118,40 @@ Sidebar is collapsible (`AnimatePresence` + spring slide), message bubbles
 animate in with a spring (`opacity/y/scale` + `layout` prop for automatic
 re-flow when content shifts).
 
+**Sidebar-collapse layout bug**: `.app` is a CSS Grid with a hardcoded
+`grid-template-columns: 264px 1fr`. When the sidebar unmounts (`{sidebarOpen
+&& <motion.aside>...}`), the grid still had two tracks defined, so the lone
+remaining child auto-placed into the first (264px) track instead of filling
+the freed width — the whole chat panel visually collapsed into
+sidebar-width. Fixed by toggling a `.sidebar-closed` class that collapses
+`grid-template-columns` to a single `1fr` track exactly when the sidebar
+isn't rendered, so there's never a mismatch between the number of grid
+tracks and the number of grid children.
+
+**Inline-rename race (React 19 discrete-event flush + `autoFocus`)**: click-to-rename
+appeared completely non-functional — clicking the title did nothing
+visible, every time. Root-caused by actually driving the app with a real
+browser rather than reading the code and guessing (headless Chromium's
+system deps weren't available in the sandbox with no root access, so this
+meant building a working Firefox instance by hand: stubbing out the
+missing `libasound.so.2` with a tiny C shim exporting the ~65 versioned ALSA
+symbols `libxul.so` needed, just to get a browser that could click things).
+Console-instrumenting the actual state setter showed it firing correctly
+with the right ID on every click — the bug wasn't in the click handler, it
+was in why the resulting `<input>` never stayed rendered. The stack trace
+for the mystery `blur` call went `commitHostMount → commitMount →
+executeDispatch → commitEditingTitle`: React 19 flushes a click's state
+update *synchronously* (it's a discrete event), so the `<span>`→`<input
+autoFocus>` swap happened inside the same call stack as the click's own
+dispatch, which triggers React's `commitMount` step for the new host node
+*while the original click event was still being processed* — synchronously
+firing a `blur` back through the brand-new input before it was ever visible
+on screen. Fixed by deferring the `setEditingConvId` state update itself to
+its own macrotask (`setTimeout(fn, 0)`), so the input mounts in a clean,
+later turn with no same-tick blur to race against. Verified with the same
+browser: without the fix the input's lifetime in the DOM was 0ms; with it,
+indefinite.
+
 ## GitHub Pages showcase build (`StaticShowcaseSection.tsx`)
 
 The same `HomePage.tsx` is reused for both the real app's homepage and the

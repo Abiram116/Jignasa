@@ -69,6 +69,7 @@ desktop.ini
 # Generated RAG index (rebuild via pipeline/, keep folder via .gitkeep)
 rag_index/*
 !rag_index/.gitkeep
+!rag_index/README.md
 
 # Local PDFs (add your own; too large for GitHub)
 knowledge-base/*.pdf
@@ -106,3 +107,7 @@ test UI/
 
 # --- Agent skills (fetched content; skills-lock.json is the source of truth) ---
 .agents/
+.claude/
+
+# --- Stray dev artifacts (not source, not meant to be committed) ---
+all_changes.patch

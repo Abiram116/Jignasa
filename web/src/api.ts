@@ -1,4 +1,4 @@
-import type { ChatMode, Conversation, EvaluationSummaryResponse, LLMSettings, Message, Source, Status, WebSource } from './types'
+import type { AgentStep, ChatMode, Conversation, EvaluationSummaryResponse, LLMSettings, MemoryItem, Message, Source, Status, WebSource } from './types'
 
 const API = '/api'
 
@@ -78,12 +78,28 @@ export async function fetchMessages(sessionId: string): Promise<{ title: string;
   return res.json()
 }
 
+export async function fetchMemories(): Promise<MemoryItem[]> {
+  const res = await fetch(`${API}/memory`)
+  if (!res.ok) throw new Error('Failed to load memories')
+  return res.json()
+}
+
+export async function deleteMemory(id: number): Promise<void> {
+  const res = await fetch(`${API}/memory/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete memory')
+}
+
+export async function clearMemories(): Promise<void> {
+  const res = await fetch(`${API}/memory`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to clear memories')
+}
+
 export type ChatEvent =
   | { type: 'intent'; mode: ChatMode }
   | { type: 'cached'; is_cached: boolean }
   | { type: 'sources'; sources: Source[] }
   | { type: 'web_sources'; sources: WebSource[]; degraded?: boolean }
-  | { type: 'ask_web_search'; message: string }
+  | ({ type: 'agent_step' } & AgentStep)
   | { type: 'token'; content: string }
   | { type: 'done'; content: string; prompt_tokens?: number; completion_tokens?: number; cached?: boolean; latency_ms?: number }
   | { type: 'error'; message: string }
@@ -125,7 +141,6 @@ export async function streamChat(
   onEvent: (event: ChatEvent) => void,
   quotedText?: string | null,
   signal?: AbortSignal,
-  confirmWebSearch?: boolean,
 ): Promise<void> {
   const llm = getLLMSettings()
   const res = await fetch(`${API}/conversations/${sessionId}/chat`, {
@@ -135,7 +150,6 @@ export async function streamChat(
       message,
       mode,
       quoted_text: quotedText ?? null,
-      confirm_web_search: confirmWebSearch ?? false,
       llm_provider: llm.provider,
       llm_api_key: llm.apiKey || null,
       llm_model: llm.model || null,

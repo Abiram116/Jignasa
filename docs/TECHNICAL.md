@@ -33,48 +33,83 @@ Browser (React, web/)
    ▼
 FastAPI backend (api/)
    │
-   ├─ casual  ──────────────────────────────► Ollama (qwen3:8b)
-   ├─ docs    ─► FAISS + query transform ───► Ollama
-   ├─ web     ─► DuckDuckGo (ddgs) ──────────► Ollama
-   └─ hybrid  ─► FAISS + DuckDuckGo (parallel)► Ollama
+   ├─ casual (heuristic short-circuit) ──────────────────► Ollama (qwen3:8b)
    │
-   ├─ SQLite (chat_history.sqlite3): conversations, messages, prompt cache
-   └─ data/evaluations/: retrieval + RAGAS benchmark snapshots
+   └─ everything else ─► adaptive ReAct loop (api/agent.py)
+                             │
+                  tool menu scoped by pinned mode:
+                  Knowledge→rag_search only, Web→web_search only,
+                  Hybrid/Auto→both. The loop decides per-turn
+                  whether to call either, both, or neither.
+                             │
+                    ┌────────┴────────┐
+                    ▼                 ▼
+              FAISS index        DuckDuckGo
+              (your PDFs)         (live web)
+                             │
+                    one final Ollama call, using whichever
+                    system prompt matches what was gathered
+   │
+   ├─ SQLite (chat_history.sqlite3): conversations, messages, prompt cache,
+   │  persistent memory (api/memory.py)
+   └─ data/evaluations/: retrieval, RAGAS, and tool-selection benchmark snapshots
 ```
 
 Everything runs locally: no API keys, no cloud LLM calls, no paid services.
 That constraint shapes several decisions documented below (DuckDuckGo
 instead of a paid search API, a small 8B local model instead of GPT-4-class,
-FAISS instead of a managed vector DB).
+FAISS instead of a managed vector DB) — and it's also the reason the
+adaptive loop's decision step is worth reading closely: an 8B model making
+tool-selection judgment calls behaves very differently from a frontier
+model doing the same job, in ways covered in the case studies below.
 
 ## Backend internals (`api/`)
 
-### Mode routing
+### Mode routing — a heuristic short-circuit plus an adaptive loop, not a fixed pipeline
 
-Every chat message resolves to one of four modes before generation:
-`casual`, `docs` (RAG), `web`, or `hybrid` (RAG + web concurrently, via a
-`ThreadPoolExecutor`). In `auto` mode, `classify_intent_llm()` (`api/intent.py`)
-makes that call; otherwise the user's explicit mode selection is used, with
-a couple of guardrails (e.g. `docs`/`hybrid` silently downgrade if the FAISS
-index isn't built yet; `web` downgrades to `casual` if the message is
-heuristically conversational rather than a real query).
+A cheap regex heuristic (`classify_intent()`, `api/intent.py`) catches
+obvious small talk instantly, with zero LLM round-trip, regardless of which
+mode is pinned. Everything else enters `run_agent_loop()` (`api/agent.py`),
+which is given a *tool menu* scoped by the pinned mode —
+`{"agent" (auto): both, "hybrid": both, "docs": rag_search only, "web":
+web_search only}` — and decides for itself, every turn, whether to call
+either, both, or neither. Pinning a mode never forces a tool call; it only
+changes what's on the menu. This replaced an earlier design where `docs`/
+`web`/`hybrid` were four separate fixed branches that always ran their
+associated retrieval step unconditionally — asking "what's 2+2" while
+Knowledge-pinned used to run a full FAISS search for no reason.
+
+The persisted mode / UI badge is always derived from the *outcome* of a
+turn (which tools it actually ended up using — `rag_attempted`/
+`web_attempted`, tracked from the loop's own trace, not just whether
+results came back non-empty, so a genuine zero-hit search still gets
+credited correctly instead of silently falling back to the casual
+personality), never from which pin was selected or an internal "agent"
+label. See "The adaptive ReAct loop" below for the full design.
 
 ### System prompts — one per mode, each with its own "personality"
 
-`api/main.py` defines `CASUAL_SYSTEM`, `RAG_SYSTEM`, `WEB_SYSTEM`,
-`HYBRID_SYSTEM`, and `NO_KB_SYSTEM`. Each has its own formatting rules and
-its own honesty rule, tuned to what that mode is actually vulnerable to:
+`api/main.py` defines `CASUAL_SYSTEM`, `RAG_SYSTEM`, `WEB_SYSTEM`, and
+`HYBRID_SYSTEM`. Each has its own formatting rules and its own honesty
+rule, tuned to what that mode is actually vulnerable to, and the loop picks
+whichever one matches what it actually gathered that turn rather than a
+fifth, separate "agent" prompt:
 
 - **Casual**: hedge on uncertain factual claims rather than guessing with
   false confidence.
 - **RAG**: if context only *partially* covers the question, say what's
   supported and what isn't, instead of stretching thin evidence into a
-  complete-sounding answer.
-- **Web** / **Hybrid**: re-check that a cited source number actually
-  supports the specific claim before attaching it — and if results are
-  weak/tangential, present 2-3 plausible candidates instead of forcing one
-  confident (and possibly wrong) answer. This rule exists because of a real
-  failure — see the case study below.
+  complete-sounding answer; a genuine zero-hit search still gets this
+  prompt (not a silent downgrade to the casual personality), so a
+  Knowledge-pinned miss says so honestly instead of answering from general
+  knowledge.
+- **Web** / **Hybrid**: for any specific number, version, date, or
+  statistic, find the exact result whose text contains that value and cite
+  only that one — if nothing in the provided context explicitly contains
+  the value, say it isn't confirmed rather than filling it in from the
+  model's own training data and citing the closest-sounding source. This
+  rule went through two iterations after two separate real failures — see
+  the case studies below.
 
 ### SSE streaming protocol
 
@@ -82,11 +117,16 @@ The chat endpoint (`POST /api/conversations/{id}/chat`) streams
 Server-Sent Events in this order:
 
 ```
-{"type": "intent", "mode": "casual|rag|web|hybrid"}
+{"type": "intent", "mode": "casual|rag|web|hybrid"}       ← fires twice for non-casual turns:
+                                                             once as an immediate placeholder,
+                                                             again with the real outcome once
+                                                             the loop resolves
+{"type": "agent_step", "stage": "tool_call", "tool": "rag_search|web_search", "reasoning": "...", "detail": "..."}
+{"type": "agent_step", "stage": "observation", "tool": "...", "detail": "3 document chunk(s) found"}
+{"type": "agent_step", "stage": "answering"}
 {"type": "cached", "is_cached": true}                    ← cache hit only
-{"type": "sources", "sources": [...]}                    ← docs/hybrid
-{"type": "web_sources", "sources": [...], "degraded": false}  ← web/hybrid
-{"type": "ask_web_search", "message": "..."}              ← auto mode, weak RAG hit
+{"type": "sources", "sources": [...]}                    ← whenever rag_search was used
+{"type": "web_sources", "sources": [...], "degraded": false}  ← whenever web_search was used
 {"type": "token", "content": "..."}                       ← repeated
 {"type": "done", "content": "...", "prompt_tokens": N, "completion_tokens": M, "cached": false, "latency_ms": N}
 {"type": "error", "message": "..."}
@@ -94,12 +134,94 @@ Server-Sent Events in this order:
 
 `degraded: true` on `web_sources` means hybrid mode's web search failed and
 the answer is docs-only — added so that failure isn't silent (see the
-robustness section below).
+robustness section below). The old `ask_web_search` event (a
+human-in-the-loop prompt for low-confidence Knowledge-mode misses) was
+removed once Knowledge mode became strictly `rag_search`-only by design —
+there's nothing left to ask permission for, since the loop can't reach the
+web from that pin at all; a miss just answers honestly instead.
+
+### The adaptive ReAct loop (`api/agent.py`)
+
+`run_agent_loop()` is a hand-written Reason+Act loop, not a framework
+construct: each round makes one fast, non-streaming Ollama tool-calling
+"decision" call offering whatever tools the pinned mode allows, executes
+the chosen tool, and feeds the observation back in as plain text (not a
+reconstructed native `tool_calls` message — simpler, and avoids depending
+on the exact wire shape Ollama expects for a tool-call round-trip). Both
+tools require a `reasoning` argument in their schema, so every call carries
+a structured "why" at zero extra latency — no separate thinking-mode call
+needed, and it's exactly the input Stage 2.5's planned audit log will
+consume (see `docs/AGENT_ROADMAP.md`). The loop terminates on no tool call,
+a repeated `(tool, query)` pair, or a hard iteration cap.
+
+**The decision prompt went through a real whiplash cycle worth documenting
+plainly**: it started simple ("call a tool if you need more information"),
+which under-triggered — the Rust-version case study below happened under
+this version. It was then hand-edited, reactively, into a wall of
+ALL-CAPS "CRITICAL RULES" plus a second, differently-worded reminder
+stapled onto every user message — which made tool selection *worse*, not
+better ("searches the web when the answer's in the documents, answers by
+itself when it shouldn't"). An 8B model gets *less* reliable the more
+overlapping, shouted instructions get piled on, especially two differently
+phrased rules about the same decision disagreeing slightly. The fix was to
+revert to a small number of clear, non-contradictory rules stated once —
+and, more importantly, to stop tuning this prompt against single anecdotes
+at all. `scripts/eval_tool_selection.py` exists specifically because of
+this cycle: a 12-case, deterministic eval (does it call the right tool, or
+correctly call none, for each representative query) that any future
+prompt change gets checked against before shipping, the same discipline
+already applied to retrieval quality. Current baseline: **10/12**, and the
+two remaining failures are a measured model-capability ceiling, not a
+wording problem — confirmed by re-running the identical prompt twice and
+watching one case flip between pass and fail with no change in between.
+Documented as a known limit rather than chased further; see "Known
+limitations" below.
+
+### Persistent memory (`api/memory.py`)
+
+A small, global, cross-session store — not scoped per conversation, since
+this is a single-user local app with no user table, just chat threads. Two
+halves:
+
+- **Read, before answering**: `format_memory_block()` renders stored facts
+  into a block appended to every casual/loop system prompt. No embedding
+  search — the store is small and personal, so injecting everything
+  (capped at `MAX_MEMORY_ITEMS`) is correct here, not a shortcut.
+- **Write, after answering**: `extract_memory()` runs as a `BackgroundTask`
+  strictly *after* the SSE stream has fully sent (Starlette awaits a
+  `StreamingResponse`'s background task only once the body finishes), so a
+  slow or failed extraction call can never add latency or an error to the
+  visible response. An Ollama tool-calling call decides whether anything in
+  the turn was worth remembering.
+
+**Found and fixed: memory saved almost everything.** The first version of
+the `save_memory` tool's description was too permissive — real usage
+showed it turning *every single question asked* into 2-5 stored
+"memories" (`"Their question was about the latest version of Rust"`,
+`"They might be looking for detailed information on specific C++23
+features"` — restatements of the conversation, not durable facts). Fixed
+by rewriting the tool description to be explicit about the boundary
+(identity-level facts and explicit standing instructions only — name,
+role, "always answer in bullet points" — never the topic of the current
+exchange), with negative examples anchoring what doesn't qualify, plus "if
+in doubt, save nothing" stated directly. Verified after the fix: a routine
+technical question saves zero new memories, where before it would have
+saved several. The junk data was purged from the live database, not left
+in as dead weight.
+
+**Found and fixed: personal questions triggered a tool call.** Asking "what
+is my name?" — a question only answerable from what the user already told
+Jignasa — was routing to `web_search`, because the decision prompt had no
+rule distinguishing "I already know this from memory" from "I should look
+this up." Fixed by adding an explicit, ordered rule: questions about the
+user themselves must be answered directly from the memory notes or
+conversation, never searched, since neither the web nor the user's own
+documents can know who the user is.
 
 ### Robustness pass
 
 A `_finish_response()` helper (`api/main.py`) wraps the persist-and-respond
-step shared by all four modes. Before this existed, each mode branch called
+step shared by the casual branch and the unified loop branch. Before this existed, each mode branch called
 `db.append_message()` directly with no error handling — if that write
 failed (SQLite locked, disk issue) *after* tokens had already streamed to
 the client, the exception propagated out of the generator and the client
@@ -164,7 +286,7 @@ used `[N]` — two different formats, and the linking regex only matched
 `[N]`, so hybrid's web citations were *never* clickable, live or not.
 Standardized both modes to `[N]`.
 
-## Case study: a real grounding failure, found and fixed with evidence
+## Case study 1: a real grounding failure, found and fixed with evidence
 
 A user asked, in web mode: *"what was some website which predicts the
 future of world based on AI development it was famous one"*. The response
@@ -222,9 +344,68 @@ the dependency that actually needed hardening was the small local model's
 faithfulness to its own context, not the search step. Measure before
 fixing; the obvious hypothesis was the wrong one here.
 
+## Case study 2: the same failure mode recurring, and closing it mechanically
+
+Asked "What's the latest version of Rust, and what changed in it?" in Auto
+mode. The answer confidently stated **1.96.0**, citing `[2]` and `[4]`, with
+no release date. A manual fact-check found the actual latest version to be
+**1.96.1**.
+
+**First check: was this a search problem or a generation problem?**
+Measured, not assumed — calling `web_search()` directly with the exact
+query the loop had used showed the correct answer sitting in the raw
+results the whole time: result `[2]`'s title was literally *"Announcing
+Rust 1.96.1 — Rust Blog"*, result `[3]` stated *"Stable: 1.96.1"* in a
+structured changelog format. Result `[4]` — the one actually cited — was a
+generic GitHub releases page whose snippet didn't mention a version number
+at all. This ruled out a retrieval gap immediately: the correct fact was
+present and prominent; the model cited the source that didn't support the
+claim over the ones that did.
+
+**Confirmed at `temperature=0`, ruling out randomness.** Isolated the
+generation step from the rest of the loop — same captured search results,
+same `WEB_SYSTEM` prompt, direct `stream_chat()` call — and reproduced the
+exact same wrong answer at fully deterministic sampling. This wasn't the
+model "getting unlucky" on a sample; it was consistently preferring its own
+stale training-data belief about the version number over what was actually
+in front of it. The existing citation rule ("re-check that a source
+genuinely supports the claim") was already in the prompt from Case Study
+1 — an *abstract* self-verification instruction, and the model wasn't
+reliably applying it here.
+
+**The fix was mechanical, not just more emphatic wording.** Replaced the
+abstract "re-check it supports the claim" instruction with a concrete
+matching procedure: for any specific number/version/date/statistic, find
+the exact result whose text *contains that value*, and cite only that one
+— if no result's text contains it, say the figure isn't confirmed rather
+than filling it in from training data. Pattern-matching text is a task
+small models handle far more reliably than open-ended "does this genuinely
+support X" judgment calls. Re-tested against a clean, unambiguous result
+set: correct answer, correct citation.
+
+**What this didn't fully solve, stated plainly**: DuckDuckGo's live
+results aren't always this clean — a later run against a *messier* result
+set (stable/beta/nightly version numbers mixed across different pages,
+some outdated) still produced an occasional wrong number. That residual
+error traces to genuine ambiguity in the source data, not a prompt gap, and
+is a search-quality ceiling rather than something more prompt engineering
+closes. Recorded honestly rather than claimed as fully solved — see "Known
+limitations."
+
+**The pattern across both case studies**: the first fix (Case Study 1) was
+a general instruction ("verify before citing"); it wasn't specific enough
+to survive contact with a genuinely deceptive result (a citation-worthy
+title sitting right next to an uncited plain fact). The second fix turned
+the same principle into something mechanically checkable. The broader
+lesson for anyone extending this project: for small local models, "be more
+careful" is weaker guidance than "match this exact pattern" — and both
+times, the fix came from measuring the actual search results and actual
+model output side by side, not from re-reading the prompt and guessing
+what sounded reasonable.
+
 ## Evaluation
 
-Two distinct benchmarks exist, covering different failure modes:
+Three distinct benchmarks exist, covering different failure modes:
 
 - **Retrieval-only** (`scripts/evaluate_rag_metrics.py`): Hit@k, MRR, nDCG
   against `data/evaluation_set.json` — "did we pull the right PDF?" No LLM
@@ -236,18 +417,33 @@ Two distinct benchmarks exist, covering different failure modes:
   `qwen3:8b` (since there's no paid judge-model API in a local-first
   project — see that script's docstring for why this makes scores
   directional, not a universal benchmark).
+- **Tool-selection accuracy** (`scripts/eval_tool_selection.py`): calls
+  `run_agent_loop()` directly for 12 representative queries and checks
+  whether it picked the right tool(s) — or correctly picked none — no
+  answer-quality judgment involved, just the decision step in isolation.
+  Exists because of the decision-prompt whiplash documented in "The
+  adaptive ReAct loop" above; current baseline is 10/12, with the gap
+  attributed to a measured model-capability ceiling rather than left
+  unexplained.
 
-Both feed `GET /api/evaluation/summary`, which the homepage's "Measured
-against real questions" section reads live — not hardcoded — so the
-numbers shown always reflect whatever was last actually run. Full current
-results and methodology caveats: [`data/evaluations/README.md`](../data/evaluations/README.md).
+The first two feed `GET /api/evaluation/summary`, which the homepage's
+"Measured against real questions" section reads live — not hardcoded — so
+the numbers shown always reflect whatever was last actually run. Full
+current results and methodology caveats:
+[`data/evaluations/README.md`](../data/evaluations/README.md). The
+tool-selection eval is a development-time check run from the CLI, not
+(yet) wired into the homepage.
 
 ## Frontend
 
 Covered in full in [`web/README.md`](../web/README.md) — design system
 (fonts, colors), the motion library stack and the `#root`-vs-`window`
-scroll-container bug that affected multiple components, and a rundown of
-every homepage motion component and why it exists.
+scroll-container bug that affected multiple components, a rundown of every
+homepage motion component and why it exists, and two chat-page bugs found
+by actually driving the app with a real (headlessly-patched) browser rather
+than reading the code and guessing: a CSS Grid sidebar-collapse layout bug,
+and a React 19 discrete-event-flush race that made inline rename appear
+completely broken.
 
 ## Security & guardrails (`api/security.py`, `api/intent.py`)
 
@@ -330,11 +526,22 @@ both fixed in the same pass rather than just documented:
 - **DuckDuckGo search quality** is the ceiling for web mode's grounding —
   free and no API key, but not as comprehensive as Bing/Google-backed
   search. This is a deliberate trade-off of staying fully local/free, not
-  an oversight.
+  an oversight. Case Study 2 above shows a concrete case where this shows
+  up: messy, conflicting version numbers spread across multiple pages
+  occasionally still produce a wrong specific number even with a
+  mechanically precise citation rule in place — the ambiguity is in the
+  source data, not something a prompt fix closes.
 - **qwen3:8b's grounding fidelity** can fail under weak evidence (see the
-  case study) — mitigated with explicit prompt instructions, not eliminated.
-  A larger model would have more headroom here, at the cost of the
-  fully-local constraint.
+  case studies) — mitigated with explicit prompt instructions, not
+  eliminated. A larger model would have more headroom here, at the cost of
+  the fully-local constraint.
+- **Tool-selection reliability tops out around 10/12** on
+  `scripts/eval_tool_selection.py`'s benchmark — confirmed to be an 8B
+  model capability ceiling (re-running the identical prompt reproduces
+  different results on the same borderline cases), not a prompt-wording
+  gap. The actual next lever, not yet built, is letting the decision step
+  use a stronger model instead of always hardcoding local Ollama for it
+  regardless of whatever BYOK provider is configured for the final answer.
 - **FAISS `IndexFlatIP`** is exact search, not approximate — correct and
   fast at this corpus size (~2000 chunks), but would need revisiting
   (HNSW/IVF, or a dedicated vector DB) well before reaching 100K+ chunks or

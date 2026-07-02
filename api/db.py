@@ -40,6 +40,7 @@ def init_db() -> None:
             ("web_sources_json", "TEXT"),
             ("cached", "INTEGER DEFAULT 0"),
             ("latency_ms", "INTEGER DEFAULT 0"),
+            ("agent_trace_json", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE chats ADD COLUMN {col} {col_type}")
@@ -83,7 +84,7 @@ def load_messages(session_id: str) -> list[dict]:
     with db_conn() as conn:
         rows = conn.execute(
             """SELECT id, role, message, created_at, prompt_tokens, completion_tokens, mode,
-                      sources_json, web_sources_json, cached, latency_ms
+                      sources_json, web_sources_json, agent_trace_json, cached, latency_ms
                FROM chats WHERE session_id = ? ORDER BY id""",
             (session_id,),
         ).fetchall()
@@ -113,9 +114,19 @@ def load_messages(session_id: str) -> list[dict]:
                 d["webSources"] = []
         else:
             d["webSources"] = []
-            
+
+        # Load agent trace (Stage 1 ReAct loop)
+        if d.get("agent_trace_json"):
+            try:
+                d["agentTrace"] = json.loads(d["agent_trace_json"])
+            except Exception:
+                d["agentTrace"] = []
+        else:
+            d["agentTrace"] = []
+
         d.pop("sources_json", None)
         d.pop("web_sources_json", None)
+        d.pop("agent_trace_json", None)
         msgs.append(d)
     return msgs
 
@@ -131,6 +142,7 @@ def append_message(
     web_sources: list | None = None,
     cached: bool = False,
     latency_ms: int = 0,
+    agent_trace: list | None = None,
 ) -> None:
     import json
     with db_conn() as conn:
@@ -138,8 +150,8 @@ def append_message(
             """INSERT INTO chats (
                 session_id, role, message, created_at,
                 prompt_tokens, completion_tokens, mode,
-                sources_json, web_sources_json, cached, latency_ms
-               ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                sources_json, web_sources_json, agent_trace_json, cached, latency_ms
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 role,
@@ -150,6 +162,7 @@ def append_message(
                 mode,
                 json.dumps(sources) if sources else None,
                 json.dumps(web_sources) if web_sources else None,
+                json.dumps(agent_trace) if agent_trace else None,
                 1 if cached else 0,
                 latency_ms,
             ),

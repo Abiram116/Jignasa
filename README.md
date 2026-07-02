@@ -25,33 +25,39 @@ Jignasa is a complete RAG system built from first principles: a structure-aware 
 
 ## What it does
 
-Ask it anything. Jignasa figures out on its own whether your question is small talk, something answerable from your documents, something that needs a live web search, or both — then answers with sources, streamed live, token by token.
+Ask it anything. Jignasa runs a small hand-written ReAct (Reason + Act) loop — no LangChain — that decides for itself, every turn, whether it needs to search your documents, search the web, both, or just answer directly. Pinning a mode doesn't force a search; it only changes which tools are on the table. "What's 2+2" in Knowledge mode gets a direct answer, not a pointless document search. Every answer streams live with sources, and a live "thinking" trace shows exactly which tool it called and why before the answer even starts.
+
+It also remembers durable things you tell it — your name, a stated preference — across every future conversation, the same way ChatGPT's memory works: sparingly, only for identity-level facts, never a running summary of what you asked about. You can see and delete everything it remembers from the sidebar.
 
 Everything runs on a local model via [Ollama](https://ollama.com) — there's no per-message cost, no rate limit from a provider, and no risk of your documents or conversations ever touching someone else's server.
 
 ### Modes
 
-The mode selector above the input box has four buttons: **Auto**, **Knowledge**, **Web**, and **Hybrid**.
+The mode selector above the input box has four buttons: **Auto**, **Knowledge**, **Web**, and **Hybrid**. All four run through the same adaptive loop — the difference is only which tools are available to it:
 
-- **Auto** (default) — Jignasa classifies your message itself: plain conversation gets a casual reply with no retrieval at all; anything else routes to documents, web, or both
-- **Knowledge** — answers strictly from your indexed PDFs, with page citations
-- **Web** — live DuckDuckGo search, cited inline, no API key needed
-- **Hybrid** — both at once, run concurrently, one answer citing both
+- **Auto** (default) — a cheap heuristic catches obvious small talk instantly; everything else goes to the loop with both tools available
+- **Knowledge** — only document search is available; a genuine miss gets an honest "not in your documents" answer, not a fabricated one
+- **Web** — only live DuckDuckGo search is available, cited inline, no API key needed
+- **Hybrid** — both tools available; the loop decides whether it needs one, both, or (for trivial questions) neither
+
+The badge under each answer always reflects what actually happened that turn (PDF RAG / Web / Hybrid / Chat), never which button you pressed.
 
 ### Under every response
 
+- **Live thinking trace** — a "Thought for N steps" panel shows each tool call the loop made and its stated reasoning, live as it happens, collapsing into history once the answer starts
 - **Token counts** — input/output/total tokens for that exact reply
 - **Latency** — wall-clock time for that response, shown as a badge
 - **Cache hits** — a "Cached" badge when an answer came from the prompt cache instead of a fresh LLM call (instant, no re-generation)
 - **Token cost calculator** — estimates what the whole conversation would have cost on GPT-4o, Claude, Gemini, etc. — useful context for why running locally is free, even though you're seeing real token numbers
 - **Model settings** — swap between local Ollama (default) and your own OpenAI/Anthropic/Gemini key, per conversation
+- **Memory** — a sidebar panel showing everything Jignasa has remembered about you, with per-item delete and clear-all
 
 ## Why it's worth a look
 
 Most "chat with your docs" projects are a thin wrapper around a hosted API. Jignasa builds every layer itself:
 
 - **A real RAG pipeline** — PDF parsing, structure-aware chunking that keeps page and section context, vector search, and query rewriting to actually find the right passage, not just a keyword match
-- **Smart, not just scripted** — it classifies what kind of question you're asking and routes it automatically; you can also pin a mode manually
+- **Genuinely agentic, not a routing table** — a hand-written ReAct loop decides per-turn whether to call a tool at all, the same mechanism Claude's own tool use runs on. No LangChain, no framework magic — see [`docs/AGENT_ROADMAP.md`](docs/AGENT_ROADMAP.md) for how this was built and [`docs/TECHNICAL.md`](docs/TECHNICAL.md) for two real "found it, measured it, fixed it" case studies from tuning it
 - **Honest about uncertainty** — the model is explicitly prompted to say "I don't know" rather than make something up, and citations are verified before being shown
 - **Measured, not just claimed** — retrieval quality and answer quality are both benchmarked against real test questions, and the results are shown live on the homepage, not just asserted in this README
 - **A genuinely designed interface** — not a default template: custom type, a real motion/scroll system, and a UI built to feel as considered as the backend (see [`web/README.md`](web/README.md))
@@ -73,13 +79,18 @@ Most "chat with your docs" projects are a thin wrapper around a hosted API. Jign
 ```
 Browser (React)  ──HTTP/SSE──▶  FastAPI Backend  ──▶  Ollama (qwen3:8b)
                                       │
-                       ┌──────────────┼──────────────┐
-                       ▼              ▼               ▼
-                  FAISS index   DuckDuckGo      SQLite cache
-                  (your PDFs)    (live web)      + chat history
+                         ┌────────────┴────────────┐
+                         ▼                          ▼
+                  adaptive ReAct loop          SQLite
+                  (api/agent.py)          chat history, prompt
+                         │                 cache, persistent
+              ┌──────────┴──────────┐      memory
+              ▼                     ▼
+        FAISS index            DuckDuckGo
+        (your PDFs)             (live web)
 ```
 
-Every response streams token-by-token over Server-Sent Events, with the backend deciding per-message whether to use your documents, the web, both, or neither.
+Every response streams token-by-token over Server-Sent Events. The loop decides per-turn which tool(s) it actually needs — the diagram's two tool paths are a menu, not a fixed pipeline every message runs through.
 
 **Why exact search (FAISS `IndexFlatIP`) instead of an approximate index (IVF/HNSW):** approximate indexes trade a small amount of accuracy for speed, but only start paying off at roughly 100K+ vectors — below that, exact brute-force cosine search is already sub-millisecond *and* has zero recall loss, so it's strictly more correct, not less production-grade. At this project's scale (a few thousand chunks per knowledge base), approximate search would be a pure downgrade with no real speed benefit. See [`pipeline/README.md`](pipeline/README.md) for the full reasoning.
 

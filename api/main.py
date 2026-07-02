@@ -12,10 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
-from api import db, rag
+from api import db, memory, rag
+from api.agent import AgentResult, AgentStep, run_agent_loop
 from api.cache import init_cache, get_cached, set_cached
-from api.config import TOP_K, WEB_SEARCH_RESULT_COUNT
+from api.config import MEMORY_MANAGE_LIMIT, TOP_K, WEB_SEARCH_RESULT_COUNT
 from api.evaluation import (
     EVAL_DESCRIPTION,
     EVAL_TYPE,
@@ -25,7 +27,7 @@ from api.evaluation import (
     save_named_snapshot,
     stream_evaluation,
 )
-from api.intent import classify_intent, classify_intent_llm, run_guardrails
+from api.intent import classify_intent, run_guardrails
 from api.llm import stream_chat
 from api.rag import build_prompt, search_with_transform
 from api.security import (
@@ -72,7 +74,6 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     mode: str = Field(default="auto")
     quoted_text: str | None = Field(default=None, max_length=1000)
-    confirm_web_search: bool = Field(default=False)
     # BYOK (bring your own key): used only for this request's chat() calls,
     # never written to db.append_message, set_cached, or logs.
     llm_provider: str = Field(default="ollama")
@@ -103,6 +104,7 @@ class PartialAssistantRequest(BaseModel):
 def startup() -> None:
     db.init_db()
     init_cache()
+    memory.init_memory()
 
 
 @app.get("/api/status")
@@ -224,7 +226,7 @@ WEB_SYSTEM = """You are Jignasa, an AI assistant with access to live web search 
 
 CORE RULES:
 - Use search results as your primary source — cite them as [1], [2] etc. inline
-- Before citing a source number, re-check that its actual title/snippet genuinely supports the specific claim you're attaching it to. Never attach a citation number to a claim that source doesn't actually contain — a wrong citation is worse than no citation
+- For any specific number, version, date, price, or statistic you state: find the exact result whose title or snippet contains that exact value, and cite only that result. If no single result's text explicitly contains the value you're about to write, do not write it as fact — say the precise figure isn't confirmed in the results instead of citing the closest-sounding source anyway. Do not fill in a number from your own training data and attach a citation to it — a wrong citation is worse than no citation
 - Synthesize information across sources rather than just repeating one
 - Acknowledge when sources conflict or are unclear
 - Be factual and accurate — do not add information not in the results
@@ -243,7 +245,7 @@ HYBRID_SYSTEM = """You are Jignasa, a hybrid assistant that synthesizes answers 
 
 CORE RULES:
 - Cite document sources exactly as they appear in the context, e.g. [filename p.N], and web sources as [N] (e.g. [1], [2])
-- Before attaching a citation to a claim, re-check that the cited source actually supports that specific claim — never attach a citation number or filename to something it doesn't really say
+- For any specific number, version, date, price, or statistic you state: find the exact source (document chunk or web result) whose text contains that exact value, and cite only that one. If nothing in the provided context explicitly contains the value you're about to write, do not write it as fact — say the precise figure isn't confirmed in the provided sources instead of citing the closest-sounding one anyway. Do not fill in a number from your own training data and attach a citation to it
 - Prioritize document context for domain-specific questions; web for current/live information
 - Acknowledge when sources complement or contradict each other
 - Never hallucinate — only use what's in the provided context
@@ -257,9 +259,7 @@ FORMATTING RULES:
 - Structure with clear sections for complex answers
 - Lead with the most important information"""
 
-NO_KB_SYSTEM = """You are Jignasa, a document assistant. The user asked a question but nothing relevant was found in the knowledge base, and they've chosen not to search the web.
 
-Respond honestly: acknowledge that this topic isn't covered in your documents and isn't something you can look up right now. Be brief and direct. You can offer general knowledge if you're confident about it, but clearly mark it as general knowledge (not from their documents). Suggest they switch to Web mode if they need current or external information."""
 
 
 @app.post("/api/conversations/{session_id}/chat")
@@ -284,36 +284,31 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
     if mode_requested not in ["auto", "docs", "web", "hybrid"]:
         mode_requested = "auto"
 
-    intent = mode_requested
     if mode_requested == "auto":
-        intent = classify_intent_llm(body.message)
-        if intent == "casual":
-            resolved_mode = "casual"
-        elif intent == "web":
-            resolved_mode = "web"
-        else:
-            resolved_mode = "docs"
+        heuristic = classify_intent(body.message)
+        resolved_mode = "casual" if heuristic == "casual" else "agent"
     else:
         resolved_mode = mode_requested
-        if resolved_mode == "docs":
-            intent = "rag"
-        elif resolved_mode == "web":
-            heuristic = classify_intent(body.message)
-            if heuristic == "casual":
-                resolved_mode = "casual"
-                intent = "casual"
-            else:
-                intent = "web"
-        elif resolved_mode == "hybrid":
-            intent = "hybrid"
 
-    if resolved_mode in ["docs", "hybrid"] and not rag.index_ready():
-        if resolved_mode == "docs":
-            resolved_mode = "casual"
-            intent = "casual"
-        else:
-            resolved_mode = "web"
-            intent = "web"
+    _PIN_TOOL_SCOPE = {
+        "agent":  (True, True),
+        "hybrid": (True, True),
+        "docs":   (True, False),
+        "web":    (False, True),
+    }
+
+    if resolved_mode in _PIN_TOOL_SCOPE:
+        pin_allow_rag, pin_allow_web = _PIN_TOOL_SCOPE[resolved_mode]
+        if pin_allow_rag and not rag.index_ready():
+            pin_allow_rag = False
+            if resolved_mode == "docs":
+                resolved_mode = "casual"
+        allow_rag, allow_web = pin_allow_rag, pin_allow_web
+    else:
+        allow_rag = allow_web = False 
+
+    _EARLY_INTENT_LABEL = {"docs": "rag", "web": "web", "hybrid": "hybrid"}
+    intent = "casual" if resolved_mode == "casual" else _EARLY_INTENT_LABEL.get(resolved_mode, "casual")
 
     def _quote_block(quoted: str | None) -> str:
         if not quoted or not quoted.strip():
@@ -328,6 +323,14 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
     quote_ctx = _quote_block(body.quoted_text)
 
     prior_history = db.load_messages(session_id)
+    # Read-before-answering memory (Stage 1): shared by the casual and agent
+    # branches below. Global/cross-session, not scoped to this conversation.
+    memory_block = memory.format_memory_block(memory.list_memories())
+    # Populated by event_stream() at the end of casual/agent branches only --
+    # extraction is scoped to the router-driven auto-mode experience, not
+    # explicitly-pinned docs/web/hybrid modes. Read by the background task
+    # constructed at the bottom of this function, after the stream finishes.
+    memory_holder: dict = {}
 
     if not prior_history:
         words = body.message.strip().split()[:6]
@@ -364,7 +367,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                     session_id, "assistant", res_text,
                     prompt_tokens=cached["prompt_tokens"],
                     completion_tokens=cached["completion_tokens"],
-                    mode=intent, sources=cached["sources"],
+                    mode=cached["intent"], sources=cached["sources"],
                     web_sources=cached["web_sources"], cached=True, latency_ms=latency_ms,
                 )
                 yield _sse({
@@ -377,7 +380,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
         # ── CASUAL ──────────────────────────────────────────────────
         if resolved_mode == "casual":
-            ollama_messages: list[dict] = [{"role": "system", "content": CASUAL_SYSTEM}]
+            ollama_messages: list[dict] = [{"role": "system", "content": CASUAL_SYSTEM + memory_block}]
             for m in prior_history[-8:]:
                 ollama_messages.append({"role": m["role"], "content": m["message"]})
             ollama_messages.append({"role": "user", "content": f"{quote_ctx}{body.message}".strip()})
@@ -403,170 +406,94 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
             answer = "".join(answer_parts).strip()
             latency_ms = int((time.monotonic() - stream_start) * 1000)
+            memory_holder["session_id"] = session_id
+            memory_holder["user_message"] = body.message
+            memory_holder["assistant_answer"] = answer
             yield from _finish_response(
                 session_id, answer, prompt_tokens, completion_tokens, "casual", latency_ms,
             )
 
-        # ── WEB ─────────────────────────────────────────────────────
-        elif resolved_mode == "web":
-            results = web_search(body.message, n=WEB_SEARCH_RESULT_COUNT)
-            yield _sse({"type": "web_sources", "sources": results})
-
-            web_user_prompt = build_web_prompt(body.message, results, [])
-            ollama_messages_web: list[dict] = [{"role": "system", "content": WEB_SYSTEM}]
-            for m in prior_history[-6:]:
-                ollama_messages_web.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_web.append({"role": "user", "content": f"{quote_ctx}{web_user_prompt}".strip()})
-
-            answer_parts = []
-            prompt_tokens = 0
-            completion_tokens = 0
+        # ── UNIFIED TOOL-CALLING BRANCH (docs/web/hybrid/agent pins) ──
+        else:
+            agent_result: AgentResult | None = None
             try:
-                for chunk in stream_chat(
-                    ollama_messages_web, temperature=0.3, num_predict=900,
-                    provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
+                for item in run_agent_loop(
+                    body.message, prior_history, memory_block,
+                    allow_rag=allow_rag, allow_web=allow_web,
                 ):
-                    if chunk.content:
-                        answer_parts.append(chunk.content)
-                        yield _sse({"type": "token", "content": chunk.content})
-                    if chunk.done:
-                        prompt_tokens = chunk.prompt_tokens
-                        completion_tokens = chunk.completion_tokens
+                    if isinstance(item, AgentStep):
+                        yield _sse(item.to_dict())
+                    else:
+                        agent_result = item
             except Exception:
-                logger.exception("LLM call failed in web mode")
-                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
+                logger.exception("Agent loop failed")
+                yield _sse({"type": "error", "message": "Something went wrong while reasoning about your question. Please try again."})
                 return
 
-            answer = "".join(answer_parts).strip()
-            answer = _linkify_web_citations(answer, results)
-            latency_ms = int((time.monotonic() - stream_start) * 1000)
-            set_cached(body.message, "web", "web", answer, [], results, prompt_tokens, completion_tokens)
-            yield from _finish_response(
-                session_id, answer, prompt_tokens, completion_tokens, "web", latency_ms,
-                web_sources=results,
-            )
+            assert agent_result is not None  # run_agent_loop always yields exactly one AgentResult last
 
-        # ── RAG ─────────────────────────────────────────────────────
-        elif resolved_mode == "docs":
-            try:
-                hits, _transformed = search_with_transform(body.message)
-            except FileNotFoundError:
-                logger.exception("Document index missing or unreadable in docs mode")
-                yield _sse({"type": "error", "message": "Your document index isn't built yet. Add PDFs and rebuild the index, or try again in a moment."})
-                return
+            if agent_result.sources:
+                yield _sse({"type": "sources", "sources": agent_result.sources})
+            if agent_result.web_sources:
+                yield _sse({"type": "web_sources", "sources": agent_result.web_sources})
 
-            # ── Auto mode: ask before web searching if KB miss ──────
-            # If we're in auto mode and RAG found nothing useful, signal
-            # the frontend to ask the user if they want a web search.
-            if mode_requested == "auto" and not body.confirm_web_search:
-                # "No useful hits" = fewer than 2 chunks with score > 0.3
-                useful = [h for h in hits if h.get("score", 0) > 0.3]
-                if len(useful) < 2:
-                    yield _sse({"type": "ask_web_search", "message": (
-                        "I couldn't find relevant information in your documents for this query. "
-                        "Would you like me to search the web instead?"
-                    )})
-                    return
+            rag_attempted = any(t.get("tool") == "rag_search" for t in agent_result.trace if t.get("stage") == "tool_call")
+            web_attempted = any(t.get("tool") == "web_search" for t in agent_result.trace if t.get("stage") == "tool_call")
 
-            yield _sse({"type": "sources", "sources": hits})
+            if agent_result.sources and agent_result.web_sources:
+                outcome_label = "hybrid"
+                final_system = HYBRID_SYSTEM + memory_block
+                final_user_prompt = f"""Synthesize information from both the document context and web search results below to answer the question.
 
-            rag_user_prompt = build_prompt(body.message, hits, [])
-            ollama_messages_rag: list[dict] = [{"role": "system", "content": RAG_SYSTEM}]
-            for m in prior_history[-6:]:
-                ollama_messages_rag.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_rag.append({"role": "user", "content": f"{quote_ctx}{rag_user_prompt}".strip()})
-
-            answer_parts = []
-            prompt_tokens = 0
-            completion_tokens = 0
-            try:
-                for chunk in stream_chat(
-                    ollama_messages_rag, temperature=0.2, num_predict=1000,
-                    provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
-                ):
-                    if chunk.content:
-                        answer_parts.append(chunk.content)
-                        yield _sse({"type": "token", "content": chunk.content})
-                    if chunk.done:
-                        prompt_tokens = chunk.prompt_tokens
-                        completion_tokens = chunk.completion_tokens
-            except Exception:
-                logger.exception("LLM call failed in docs mode")
-                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
-                return
-
-            answer = "".join(answer_parts).strip()
-            latency_ms = int((time.monotonic() - stream_start) * 1000)
-            set_cached(body.message, "docs", "rag", answer, hits, [], prompt_tokens, completion_tokens)
-            yield from _finish_response(
-                session_id, answer, prompt_tokens, completion_tokens, "rag", latency_ms,
-                sources=hits,
-            )
-
-        # ── HYBRID ──────────────────────────────────────────────────
-        elif resolved_mode == "hybrid":
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                rag_future = executor.submit(search_with_transform, body.message)
-                web_future = executor.submit(web_search, body.message, n=WEB_SEARCH_RESULT_COUNT)
-
-                try:
-                    hits, _transformed = rag_future.result()
-                except FileNotFoundError:
-                    logger.exception("Document index missing or unreadable in hybrid mode")
-                    yield _sse({"type": "error", "message": "Your document index isn't built yet. Add PDFs and rebuild the index, or try again in a moment."})
-                    return
-                except Exception:
-                    logger.exception("Document search failed in hybrid mode")
-                    yield _sse({"type": "error", "message": "Something went wrong searching your documents. Please try again."})
-                    return
-
-                web_degraded = False
-                try:
-                    results = web_future.result()
-                except Exception:
-                    results = []
-                    web_degraded = True
-
-            yield _sse({"type": "sources", "sources": hits})
-            yield _sse({"type": "web_sources", "sources": results, "degraded": web_degraded})
-
-            doc_snippets = []
-            for h in hits:
-                doc_snippets.append(f"[{h['source']} p.{h.get('page_number')}] {neutralise_injection(h['text'])}")
-            doc_context = "\n\n".join(doc_snippets) or "No relevant document chunks were found."
-
-            web_snippets = []
-            for i, r in enumerate(results, start=1):
-                web_snippets.append(
-                    f"[{i}] {neutralise_injection(r['title'])}\nURL: {r['url']}\n{neutralise_injection(r['snippet'])}"
-                )
-            web_context = "\n\n".join(web_snippets) or "No web search results were found."
-
-            hybrid_user_prompt = f"""Synthesize information from both the document context and web search results below to answer the question.
-
-LOCAL DOCUMENT CONTEXT:
-{doc_context}
-
-WEB SEARCH RESULTS:
-{web_context}
+{agent_result.observations_text}
 
 Question: {body.message}
 
 Answer:"""
+            elif agent_result.web_sources:
+                outcome_label = "web"
+                final_system = WEB_SYSTEM + memory_block
+                final_user_prompt = build_web_prompt(body.message, agent_result.web_sources, [])
+            elif agent_result.sources:
+                outcome_label = "rag"
+                final_system = RAG_SYSTEM + memory_block
+                final_user_prompt = build_prompt(body.message, agent_result.sources, [])
+            elif rag_attempted and web_attempted:
+                outcome_label = "hybrid"
+                final_system = HYBRID_SYSTEM + memory_block
+                final_user_prompt = f"""Synthesize information from both the document context and web search results below to answer the question.
 
-            ollama_messages_hybrid = [{"role": "system", "content": HYBRID_SYSTEM}]
+{agent_result.observations_text}
+
+Question: {body.message}
+
+Answer:"""
+            elif rag_attempted:
+                outcome_label = "rag"
+                final_system = RAG_SYSTEM + memory_block
+                final_user_prompt = build_prompt(body.message, [], [])
+            elif web_attempted:
+                outcome_label = "web"
+                final_system = WEB_SYSTEM + memory_block
+                final_user_prompt = build_web_prompt(body.message, [], [])
+            else:
+                outcome_label = "casual"
+                final_system = CASUAL_SYSTEM + memory_block
+                final_user_prompt = body.message
+
+            yield _sse({"type": "intent", "mode": outcome_label})
+
+            ollama_messages_final: list[dict] = [{"role": "system", "content": final_system}]
             for m in prior_history[-6:]:
-                ollama_messages_hybrid.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_hybrid.append({"role": "user", "content": f"{quote_ctx}{hybrid_user_prompt}".strip()})
+                ollama_messages_final.append({"role": m["role"], "content": m["message"]})
+            ollama_messages_final.append({"role": "user", "content": f"{quote_ctx}{final_user_prompt}".strip()})
 
             answer_parts = []
             prompt_tokens = 0
             completion_tokens = 0
             try:
                 for chunk in stream_chat(
-                    ollama_messages_hybrid, temperature=0.3, num_predict=1200,
+                    ollama_messages_final, temperature=0.3, num_predict=1200,
                     provider=body.llm_provider, api_key=body.llm_api_key, model=body.llm_model,
                 ):
                     if chunk.content:
@@ -576,20 +503,48 @@ Answer:"""
                         prompt_tokens = chunk.prompt_tokens
                         completion_tokens = chunk.completion_tokens
             except Exception:
-                logger.exception("LLM call failed in hybrid mode")
+                logger.exception("LLM call failed in unified tool-calling branch")
                 yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
                 return
 
             answer = "".join(answer_parts).strip()
-            answer = _linkify_web_citations(answer, results)
+            if agent_result.web_sources:
+                answer = _linkify_web_citations(answer, agent_result.web_sources)
             latency_ms = int((time.monotonic() - stream_start) * 1000)
-            set_cached(body.message, "hybrid", "hybrid", answer, hits, results, prompt_tokens, completion_tokens)
+            set_cached(
+                body.message, resolved_mode, outcome_label, answer,
+                agent_result.sources, agent_result.web_sources, prompt_tokens, completion_tokens,
+            )
+            memory_holder["session_id"] = session_id
+            memory_holder["user_message"] = body.message
+            memory_holder["assistant_answer"] = answer
             yield from _finish_response(
-                session_id, answer, prompt_tokens, completion_tokens, "hybrid", latency_ms,
-                sources=hits, web_sources=results,
+                session_id, answer, prompt_tokens, completion_tokens, outcome_label, latency_ms,
+                sources=agent_result.sources, web_sources=agent_result.web_sources,
+                agent_trace=agent_result.trace,
             )
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    def _run_memory_extraction() -> None:
+        # Runs only after event_stream() has fully completed and been sent
+        # (Starlette awaits a StreamingResponse's background task strictly
+        # after the body finishes) -- so it can never add latency to, or
+        # surface an error into, the visible response.
+        if not memory_holder.get("assistant_answer"):
+            return  # stream errored out, or hit a cache/ask-web-search early return
+        try:
+            memory.extract_memory(
+                memory_holder["user_message"],
+                memory_holder["assistant_answer"],
+                session_id=memory_holder.get("session_id"),
+            )
+        except Exception:
+            logger.exception("Background memory extraction failed")
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        background=BackgroundTask(_run_memory_extraction),
+    )
 
 
 # ── Evaluation endpoints ───────────────────────────────────────────────
@@ -634,6 +589,28 @@ def save_evaluation(body: SaveEvalRequest) -> dict:
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+# ── Persistent memory management ────────────────────────────────────────
+# View/delete surface for the Stage 1 memory core -- lets the user see
+# and correct what Jignasa remembers, the same way ChatGPT/Claude expose
+# saved memories, instead of it being an opaque background process.
+
+@app.get("/api/memory")
+def get_memory() -> list[dict]:
+    return memory.list_memories(limit=MEMORY_MANAGE_LIMIT)
+
+
+@app.delete("/api/memory/{memory_id}")
+def delete_memory_route(memory_id: int) -> dict:
+    memory.delete_memory(memory_id)
+    return {"ok": True}
+
+
+@app.delete("/api/memory")
+def clear_memory_route() -> dict:
+    deleted = memory.clear_memories()
+    return {"ok": True, "deleted": deleted}
 
 
 # ── Knowledge-base upload ────────────────────────────────────────────────
@@ -722,6 +699,7 @@ def _finish_response(
     *,
     sources: list | None = None,
     web_sources: list | None = None,
+    agent_trace: list | None = None,
 ) -> Iterator[str]:
     """
     Persist the assistant's answer and yield the terminal `done` event.
@@ -739,7 +717,7 @@ def _finish_response(
             session_id, "assistant", answer,
             prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
             mode=mode, sources=sources, web_sources=web_sources,
-            cached=False, latency_ms=latency_ms,
+            cached=False, latency_ms=latency_ms, agent_trace=agent_trace,
         )
     except Exception as exc:
         yield _sse({

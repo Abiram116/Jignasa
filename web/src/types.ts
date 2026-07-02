@@ -24,6 +24,20 @@ export interface Conversation {
   created_at?: string
 }
 
+export interface MemoryItem {
+  id: number
+  content: string
+  created_at: string
+}
+
+export interface AgentStep {
+  stage: 'tool_call' | 'observation' | 'answering'
+  tool?: 'rag_search' | 'web_search'
+  reasoning?: string
+  detail?: string
+  elapsed_ms?: number
+}
+
 export interface Message {
   id?: number
   role: 'user' | 'assistant'
@@ -38,8 +52,9 @@ export interface Message {
   webSearchDegraded?: boolean
   cached?: boolean
   latency_ms?: number
-  /** Set when backend asks user whether to do a web search */
-  askWebSearch?: string
+
+  /** Stage 1 ReAct loop trace -- live while streaming, historical after */
+  agentTrace?: AgentStep[]
 }
 
 export interface Source {

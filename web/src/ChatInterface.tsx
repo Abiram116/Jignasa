@@ -16,8 +16,9 @@ import {
   streamChat,
   truncateConversation,
 } from './api'
-import type { ChatMode, LLMSettings, Message, Source, WebSource } from './types'
+import type { AgentStep, ChatMode, LLMSettings, Message, Source, WebSource } from './types'
 import { useAppState } from './AppContext'
+import { MemoryModal } from './MemoryModal'
 import { SettingsModal } from './SettingsModal'
 import { SidebarUploadView, useUploadQueue } from './SidebarUploadView'
 import './index.css'
@@ -47,11 +48,10 @@ const Ic = {
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
-  Bar: () => (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="4" height="18" rx="1" fill="currentColor"/>
-      <rect x="10" y="8" width="4" height="13" rx="1" fill="currentColor"/>
-      <rect x="17" y="13" width="4" height="8" rx="1" fill="currentColor"/>
+  PanelToggle: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+      <line x1="9.5" y1="4" x2="9.5" y2="20"/>
     </svg>
   ),
   Copy: () => (
@@ -115,6 +115,11 @@ const Ic = {
       <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
     </svg>
   ),
+  ArrowLeft: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 12H5M12 19l-7-7 7-7"/>
+    </svg>
+  ),
 }
 
 /* ── Auto-resize textarea ──────────────────────────────────────────── */
@@ -173,6 +178,36 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button className="bubble-action-btn" onClick={handleCopy} title="Copy">
       {copied ? <Ic.Check /> : <Ic.Copy />}
+    </button>
+  )
+}
+
+/* ── Edit button — click-to-arm, click-again-to-confirm. No native
+   confirm() dialog: same self-contained-state pattern as CopyButton. ── */
+function EditButton({ onConfirm }: { onConfirm: () => void }) {
+  const [armed, setArmed] = useState(false)
+  const timeoutRef = useRef<number | null>(null)
+
+  const handleClick = () => {
+    if (armed) {
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+      setArmed(false)
+      onConfirm()
+    } else {
+      setArmed(true)
+      timeoutRef.current = window.setTimeout(() => setArmed(false), 4000)
+    }
+  }
+
+  useEffect(() => () => { if (timeoutRef.current) window.clearTimeout(timeoutRef.current) }, [])
+
+  return (
+    <button
+      className={`bubble-action-btn edit-btn${armed ? ' confirm-armed' : ''}`}
+      onClick={handleClick}
+      title={armed ? 'Click again to confirm — deletes this message and everything after it' : 'Edit prompt'}
+    >
+      {armed ? 'Confirm?' : <><Ic.Pencil /> Edit</>}
     </button>
   )
 }
@@ -249,6 +284,57 @@ function WebSources({ sources, defaultOpen = false }: { sources: WebSource[]; de
   )
 }
 
+/* ── Agent trace panel (Stage 1 ReAct loop) ─────────────────────────
+   `live`: expanded, no toggle, rendered while the loop is still running.
+   Historical: same step markup, collapsed by default behind a toggle --
+   reuses the RagSources/WebSources accordion classes. ── */
+function AgentTrace({ steps, live = false }: { steps: AgentStep[]; live?: boolean }) {
+  const [open, setOpen] = useState(false)
+  if (!steps.length) return null
+
+  const toolLabel = (tool?: string) =>
+    tool === 'rag_search' ? 'Searching documents' : tool === 'web_search' ? 'Searching the web' : ''
+
+  const body = (
+    <div className={live ? 'agent-trace-live' : `sources-body ${open ? 'expanded' : 'collapsed'}`}>
+      {steps.map((s, i) => (
+        <div key={i} className={`agent-trace-step ${s.stage}`}>
+          <span className="agent-trace-icon">
+            {s.stage === 'observation' ? <Ic.Doc /> : <Ic.Sparkle />}
+          </span>
+          <div>
+            {s.stage === 'tool_call' && (
+              <>
+                <div className="agent-trace-title">{toolLabel(s.tool)}: <em>{s.detail}</em></div>
+                {s.reasoning && <div className="agent-trace-reasoning">{s.reasoning}</div>}
+              </>
+            )}
+            {s.stage === 'observation' && <div className="agent-trace-title">{s.detail}</div>}
+            {s.stage === 'answering' && <div className="agent-trace-title">Composing answer…</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  if (live) {
+    return <div className="sources-container agent-trace-container">{body}</div>
+  }
+
+  return (
+    <div className="sources-container agent-trace-container">
+      <button className={`sources-toggle agent ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
+        <span className="sources-toggle-left">
+          <Ic.Sparkle />
+          <span>Thought for {steps.length} step{steps.length !== 1 ? 's' : ''}</span>
+        </span>
+        <span className={`chevron ${open ? 'up' : ''}`}><Ic.ChevDown /></span>
+      </button>
+      {body}
+    </div>
+  )
+}
+
 /* ── Markdown renderer — used during streaming AND after ───────────── */
 function MarkdownContent({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) {
   return (
@@ -314,44 +400,18 @@ function MarkdownContent({ content, isStreaming = false }: { content: string; is
   )
 }
 
-/* ── Web Search Confirmation bubble ─────────────────────────────────── */
-function WebSearchConfirm({
-  message,
-  onYes,
-  onNo,
-}: {
-  message: string
-  onYes: () => void
-  onNo: () => void
-}) {
-  return (
-    <div className="web-search-confirm">
-      <div className="web-search-confirm-icon"><Ic.Search /></div>
-      <p className="web-search-confirm-msg">{message}</p>
-      <div className="web-search-confirm-actions">
-        <button className="web-confirm-btn yes" onClick={onYes}>
-          <Ic.Globe /> Search the web
-        </button>
-        <button className="web-confirm-btn no" onClick={onNo}>
-          No thanks
-        </button>
-      </div>
-    </div>
-  )
-}
 
 /* ── Message bubble ────────────────────────────────────────────────── */
 function MessageBubble({
-  msg, isLast, isStreaming, onEdit, onConfirmWeb, onDeclineWeb,
+  msg, isLast, isStreaming, onEdit,
 }: {
   msg: Message
   isLast: boolean
   isStreaming: boolean
   onEdit?: (msg: Message) => void
-  onConfirmWeb?: () => void
-  onDeclineWeb?: () => void
 }) {
-  const isTyping = isLast && isStreaming && !msg.message && msg.role === 'assistant'
+  const hasLiveTrace = isLast && isStreaming && msg.role === 'assistant' && !!msg.agentTrace?.length
+  const isTyping = isLast && isStreaming && !msg.message && msg.role === 'assistant' && !hasLiveTrace
   const isStreamingContent = isLast && isStreaming && !!msg.message && msg.role === 'assistant'
 
   const formatLatency = (ms: number) => {
@@ -367,7 +427,6 @@ function MessageBubble({
   return (
     <motion.div 
       className={`bubble-row ${msg.role}`}
-      layout
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: 'spring', damping: 20, stiffness: 200 }}
@@ -380,35 +439,42 @@ function MessageBubble({
           <ModeBadge mode={msg.mode} />
         )}
         <div className={`bubble ${msg.role}`}>
-          {isTyping ? (
+          {hasLiveTrace && !msg.message ? (
+            // Decision/tool-call phase happens before any token streams --
+            // shows live in place of the blank "Thinking…" spinner.
+            <AgentTrace steps={msg.agentTrace!} live />
+          ) : isTyping ? (
             <div className="agent-thinking">
               <div className="thinking-dots"><span /><span /><span /></div>
               <span>Thinking…</span>
             </div>
-          ) : msg.askWebSearch && !isStreaming ? (
-            <WebSearchConfirm
-              message={msg.askWebSearch}
-              onYes={onConfirmWeb!}
-              onNo={onDeclineWeb!}
-            />
           ) : isStreamingContent ? (
-            // Stream with live markdown rendering — no flicker since we render as it comes
-            <MarkdownContent content={msg.message} isStreaming={true} />
+            <>
+              {/* Once tokens start arriving, the live trace collapses into
+                  an accordion above the streaming answer. */}
+              {hasLiveTrace && <AgentTrace steps={msg.agentTrace!} />}
+              <MarkdownContent content={msg.message} isStreaming={true} />
+            </>
           ) : msg.role === 'assistant' ? (
-            <MarkdownContent content={msg.message} />
+            <>
+              {msg.agentTrace && msg.agentTrace.length > 0 && !isStreaming && (
+                <AgentTrace steps={msg.agentTrace} />
+              )}
+              {msg.sources && msg.sources.length > 0 && !isStreaming && (
+                <RagSources sources={msg.sources} defaultOpen={false} />
+              )}
+              {msg.webSources && msg.webSources.length > 0 && !isStreaming && (
+                <WebSources sources={msg.webSources} defaultOpen={false} />
+              )}
+              {msg.webSearchDegraded && !isStreaming && (
+                <div className="web-degraded-note">
+                  ⚠ Web search failed for this response — answer used document context only.
+                </div>
+              )}
+              <MarkdownContent content={msg.message} />
+            </>
           ) : (
             <div className="bubble-text">{msg.message}</div>
-          )}
-          {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && !isStreaming && (
-            <RagSources sources={msg.sources} defaultOpen={false} />
-          )}
-          {msg.role === 'assistant' && msg.webSources && msg.webSources.length > 0 && !isStreaming && (
-            <WebSources sources={msg.webSources} defaultOpen={false} />
-          )}
-          {msg.role === 'assistant' && msg.webSearchDegraded && !isStreaming && (
-            <div className="web-degraded-note">
-              ⚠ Web search failed for this response — answer used document context only.
-            </div>
           )}
         </div>
         {msg.role === 'assistant' && msg.message && msg.prompt_tokens !== undefined && msg.prompt_tokens > 0 && !isStreaming && (
@@ -434,16 +500,14 @@ function MessageBubble({
             </div>
           </div>
         )}
-        {msg.role === 'assistant' && msg.message && !isStreaming && !msg.askWebSearch && (
+        {msg.role === 'assistant' && msg.message && !isStreaming && (
           <div className="bubble-actions">
             <CopyButton text={msg.message} />
           </div>
         )}
         {msg.role === 'user' && !isStreaming && onEdit && (
           <div className="bubble-actions">
-            <button className="bubble-action-btn edit-btn" onClick={() => onEdit(msg)} title="Edit prompt">
-              <Ic.Pencil /> Edit
-            </button>
+            <EditButton onConfirm={() => onEdit(msg)} />
           </div>
         )}
       </div>
@@ -527,7 +591,14 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   const [selectedMode, setSelectedMode] = useState<ChatMode>('auto')
   const [showCostModal, setShowCostModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showMemoryModal, setShowMemoryModal] = useState(false)
   const [sidebarView, setSidebarView] = useState<'chats' | 'upload'>('chats')
+
+  // Inline conversation-title editing (sidebar + top bar) -- replaces the
+  // old window.prompt() dialog. `editingConvId` is the session_id currently
+  // showing an <input>, in either surface.
+  const [editingConvId, setEditingConvId] = useState<string | null>(null)
+  const [editingTitleValue, setEditingTitleValue] = useState('')
   
   const { queue, activeStages, addFiles } = useUploadQueue(() => {
     refreshStatus()
@@ -551,13 +622,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   const [quoteSelection, setQuoteSelection] = useState<{text: string, top: number, left: number} | null>(null)
   const [quotedText, setQuotedText] = useState<string | null>(null)
 
-  // Pending web search confirmation state
-  const [pendingWebConfirm, setPendingWebConfirm] = useState<{
-    userMessage: string
-    userDisplay: string
-    quote: string | null
-  } | null>(null)
 
+
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const startTimeRef = useRef<number>(0)
@@ -579,8 +646,18 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   }, [])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const container = messagesContainerRef.current
+    if (container) {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      // If we are within 150px of the bottom, or if we just stopped streaming/loaded new messages
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 150
+      if (isNearBottom || !streaming) {
+        messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
+      }
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
+    }
+  }, [messages, streaming])
 
   useEffect(() => {
     if (!sessionId) return
@@ -594,12 +671,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   }, [sessionId])
 
   const handleNewChat = async () => {
-    const c = await createConversation()
-    setSessionId(c.session_id)
+    setSessionId('')
     setMessages([])
     setTitle('New Chat')
-    setPendingWebConfirm(null)
-    await refreshConversations()
   }
 
   const handleDelete = async (id: string) => {
@@ -612,21 +686,56 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const handleRename = async (id: string, currentTitle: string) => {
-    const newTitle = prompt('Rename conversation:', currentTitle)
-    if (!newTitle || !newTitle.trim()) return
+  // Inline rename: click the title (sidebar or top bar) to edit it in
+  // place -- Enter or clicking away saves, Escape cancels. No dialog.
+  //
+  // The setEditingConvId call is deferred to its own macrotask rather than
+  // running directly in the click handler: React 19 flushes a click's state
+  // update synchronously (it's a discrete event), so the <span>-to-<input>
+  // swap happens inside the same call stack as the click's own dispatch.
+  // That triggers React's commitMount for the new host node while the
+  // original click event is still being processed, which synchronously
+  // fires a blur back through this same input -- closing the editor before
+  // it's ever visible. Deferring the state change with setTimeout(0) lets
+  // the original click event finish completely first, so the input mounts
+  // in a clean, later turn with no spurious blur.
+  const startEditingTitle = (id: string, currentTitle: string) => {
+    setTimeout(() => {
+      setEditingConvId(id)
+      setEditingTitleValue(currentTitle)
+    }, 0)
+  }
+
+  const cancelEditingTitle = () => setEditingConvId(null)
+
+  const commitEditingTitle = async () => {
+    const id = editingConvId
+    if (!id) return
+    setEditingConvId(null)
+    const newTitle = editingTitleValue.trim()
+    if (!newTitle) return
     try {
-      await renameConversation(id, newTitle.trim())
+      await renameConversation(id, newTitle)
       await refreshConversations()
-      if (id === sessionId) setTitle(newTitle.trim())
+      if (id === sessionId) setTitle(newTitle)
     } catch (e) {
       setError(String(e))
     }
   }
 
+  const titleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+    if (e.key === 'Escape') { e.preventDefault(); cancelEditingTitle() }
+  }
+
   const handleEditMessage = async (msg: Message) => {
-    if (!sessionId || !msg.id || streaming) return
-    if (!confirm('This will delete this message and all subsequent messages. Continue?')) return
+    // Confirmation happens via EditButton's click-to-arm UI, not a native
+    // dialog -- by the time this runs, the user has already confirmed.
+    if (!sessionId || streaming) return
+    if (!msg.id) {
+      setError("Can't edit this message yet — it hasn't finished saving. Try again in a moment.")
+      return
+    }
     setInput(msg.message)
     try {
       await truncateConversation(sessionId, msg.id)
@@ -689,10 +798,10 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   }
 
   const runStream = async (
+    targetSessionId: string,
     userQuestion: string,
     displayMessage: string,
     activeQuote: string | null,
-    confirmWebSearch = false,
   ) => {
     setError('')
     setStreaming(true)
@@ -709,14 +818,14 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     let pendingPromptTokens = 0
     let pendingCompletionTokens = 0
     let pendingLatencyMs = 0
+    let pendingAgentTrace: AgentStep[] = []
     let assistant = ''
-    let askedWebSearch = false
 
     const controller = new AbortController()
     abortRef.current = controller
 
     try {
-      await streamChat(sessionId!, userQuestion, selectedMode, (event) => {
+      await streamChat(targetSessionId, userQuestion, selectedMode, (event) => {
         if (event.type === 'intent') {
           pendingMode = event.mode
           setMessages((m) => {
@@ -733,26 +842,18 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           pendingWebSources = event.sources
           pendingWebDegraded = !!event.degraded
         }
-
-        // ── Backend asks if user wants web search ──
-        if (event.type === 'ask_web_search') {
-          askedWebSearch = true
-          const askMsg = event.message as string
-          // Replace the assistant placeholder with the confirm prompt
+        if (event.type === 'agent_step') {
+          pendingAgentTrace = [...pendingAgentTrace, {
+            stage: event.stage,
+            tool: event.tool,
+            reasoning: event.reasoning,
+            detail: event.detail,
+            elapsed_ms: event.elapsed_ms,
+          }]
           setMessages((m) => {
             const copy = [...m]
-            copy[copy.length - 1] = {
-              role: 'assistant',
-              message: '',
-              askWebSearch: askMsg,
-            }
+            copy[copy.length - 1] = { ...copy[copy.length - 1], agentTrace: pendingAgentTrace }
             return copy
-          })
-          // Save context for when user answers
-          setPendingWebConfirm({
-            userMessage: userQuestion,
-            userDisplay: displayMessage,
-            quote: activeQuote,
           })
         }
 
@@ -761,6 +862,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           setMessages((m) => {
             const copy = [...m]
             copy[copy.length - 1] = {
+              ...copy[copy.length - 1],
               role: 'assistant',
               message: assistant,
               mode: pendingMode,
@@ -781,9 +883,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           if (event.content) assistant = event.content
         }
         if (event.type === 'error') setError(event.message ?? 'Chat error')
-      }, activeQuote, controller.signal, confirmWebSearch)
+      }, activeQuote, controller.signal)
 
-      if (!askedWebSearch) {
+
         setMessages((m) => {
           const copy = [...m]
           copy[copy.length - 1] = {
@@ -797,34 +899,19 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
             completion_tokens: pendingCompletionTokens,
             cached: pendingCached,
             latency_ms: pendingLatencyMs,
+            agentTrace: pendingAgentTrace.length ? pendingAgentTrace : undefined,
           }
           return copy
         })
 
-        const data = await fetchMessages(sessionId!)
+        const data = await fetchMessages(targetSessionId)
         setTitle(data.title)
         setMessages((current) => {
           const serverMsgs = data.messages
           if (!serverMsgs.length) return current
-          const last = current[current.length - 1]
-          const merged = [...serverMsgs]
-          if (last?.role === 'assistant' && merged.length) {
-            merged[merged.length - 1] = {
-              ...merged[merged.length - 1],
-              message: last.message,
-              mode: last.mode,
-              sources: last.sources,
-              webSources: last.webSources,
-              prompt_tokens: last.prompt_tokens,
-              completion_tokens: last.completion_tokens,
-              cached: last.cached,
-              latency_ms: last.latency_ms,
-            }
-          }
-          return merged
+          return [...serverMsgs]
         })
-      }
-    } catch (e) {
+      } catch (e) {
       if (e instanceof DOMException && (e as DOMException).name === 'AbortError') {
         const newlineCount = (assistant.match(/\n/g) || []).length
         const charCount = assistant.trim().length
@@ -844,13 +931,14 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
               prompt_tokens: pendingPromptTokens,
               completion_tokens: pendingCompletionTokens,
               latency_ms: elapsedMs,
+              agentTrace: pendingAgentTrace.length ? pendingAgentTrace : undefined,
             }
             return copy
           })
 
           try {
             await savePartialAssistant(
-              sessionId!, stoppedMsg, pendingMode,
+              targetSessionId, stoppedMsg, pendingMode,
               pendingPromptTokens, pendingCompletionTokens, elapsedMs,
             )
           } catch {/* non-fatal */}
@@ -875,68 +963,22 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
 
     setInput('')
     setQuotedText(null)
-    setPendingWebConfirm(null)
 
     const displayMessage = activeQuote
       ? `> ${activeQuote}\n\n${userQuestion}`
       : userQuestion
 
-    await runStream(userQuestion, displayMessage, activeQuote, false)
+    let targetSessionId = sessionId
+    if (!targetSessionId) {
+      const c = await createConversation()
+      targetSessionId = c.session_id
+      setSessionId(targetSessionId)
+      await refreshConversations()
+    }
+
+    await runStream(targetSessionId, userQuestion, displayMessage, activeQuote)
   }
 
-  // User clicks "Yes, search the web"
-  const handleConfirmWebSearch = async () => {
-    if (!pendingWebConfirm) return
-    const { userMessage, userDisplay, quote } = pendingWebConfirm
-    setPendingWebConfirm(null)
-
-    // Remove the confirm bubble (assistant placeholder)
-    setMessages((m) => {
-      const copy = [...m]
-      // Remove last assistant bubble with askWebSearch
-      if (copy[copy.length - 1]?.askWebSearch) copy.pop()
-      // Remove the user message that triggered it too — will be re-added by runStream
-      if (copy[copy.length - 1]?.role === 'user') copy.pop()
-      return copy
-    })
-
-    // Re-run in web mode with confirm flag
-    const prevMode = selectedMode
-    setSelectedMode('web')
-    await runStream(userMessage, userDisplay, quote, true)
-    setSelectedMode(prevMode)
-  }
-
-  // User clicks "No thanks"
-  const handleDeclineWebSearch = async () => {
-    if (!pendingWebConfirm) return
-    const { userMessage } = pendingWebConfirm
-    setPendingWebConfirm(null)
-
-    // Replace the confirm bubble with a "not in KB" message
-    setMessages((m) => {
-      const copy = [...m]
-      if (copy[copy.length - 1]?.askWebSearch) {
-        copy[copy.length - 1] = {
-          role: 'assistant',
-          message: `This topic doesn't appear to be covered in your knowledge base, and I won't search the web.\n\nIf you need current or external information, try switching to **Web** or **Hybrid** mode.`,
-          mode: 'casual',
-        }
-      }
-      return copy
-    })
-
-    // Save the decline message to DB so conversation history is correct
-    try {
-      await savePartialAssistant(
-        sessionId!,
-        `[User declined web search for: "${userMessage}"] This topic doesn't appear to be covered in your knowledge base, and I won't search the web.\n\nIf you need current or external information, try switching to **Web** or **Hybrid** mode.`,
-        'casual', 0, 0, 0,
-      )
-    } catch {/* non-fatal */}
-
-    await refreshConversations()
-  }
 
   /* ── Status badge ── */
   const renderStatus = () => {
@@ -966,7 +1008,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   /* ── Render ── */
   return (
     <>
-      <div className="app">
+      <div className={`app${sidebarOpen ? '' : ' sidebar-closed'}`}>
         {/* ════ Sidebar ════ */}
         <AnimatePresence>
           {sidebarOpen && (
@@ -993,30 +1035,35 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                 <button id="btn-new-chat" className="btn-new-chat" onClick={handleNewChat}>
                   <Ic.Plus /> New conversation
                 </button>
-                <button
-                  className="btn-home"
-                  onClick={onBack}
-                  title="Return to home page"
-                >
-                  ← Home
-                </button>
-                <button
-                  id="btn-cost-calculator"
-                  className="btn-cost-calc"
-                  onClick={() => setShowCostModal(true)}
-                  disabled={messages.length === 0}
-                  title="Check total tokens and cost for this conversation"
-                >
-                  🪙 Token cost
-                </button>
-                <button
-                  id="btn-llm-settings"
-                  className="btn-cost-calc"
-                  onClick={() => setShowSettingsModal(true)}
-                  title="Choose between local Ollama or your own API key"
-                >
-                  ⚙️ {llmSettings.provider === 'ollama' ? 'Local model' : `${llmSettings.provider} (BYOK)`}
-                </button>
+
+                <div className="sidebar-toolbar">
+                  <button
+                    id="btn-cost-calculator"
+                    className="toolbar-icon-btn"
+                    onClick={() => setShowCostModal(true)}
+                    disabled={messages.length === 0}
+                    title="Token cost calculator"
+                  >
+                    🪙
+                  </button>
+                  <button
+                    id="btn-llm-settings"
+                    className="toolbar-icon-btn"
+                    onClick={() => setShowSettingsModal(true)}
+                    title={llmSettings.provider === 'ollama' ? 'Model: Local (Ollama)' : `Model: ${llmSettings.provider} (BYOK)`}
+                  >
+                    ⚙️
+                  </button>
+                  <button
+                    id="btn-memory"
+                    className="toolbar-icon-btn"
+                    onClick={() => setShowMemoryModal(true)}
+                    title="What Jignasa remembers about you"
+                  >
+                    🧠
+                  </button>
+                </div>
+
                 <button
                   id="btn-upload-kb"
                   className="btn-cost-calc"
@@ -1042,25 +1089,65 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                     )}
                     {conversations.map((c) => (
                       <div key={c.session_id} className={`conv-item ${c.session_id === sessionId ? 'active' : ''}`}>
-                        <button
-                          id={`conv-${c.session_id}`}
-                          className="conv-item-btn"
-                          onClick={() => {
-                            setMessagesLoading(true)
-                            setMessages([])
-                            setSessionId(c.session_id)
-                          }}
-                        >
-                          {c.title || 'New Chat'}
-                        </button>
-                        <div className="conv-actions">
+                        {editingConvId === c.session_id ? (
+                          <input
+                            ref={(el) => {
+                              // Not `autoFocus`: React 19 flushes the click
+                              // that opens this input synchronously, so
+                              // autoFocus's own commit-phase .focus() call
+                              // fires (and immediately blurs) within that
+                              // same tick -- the input would close itself
+                              // before ever becoming visible. Deferring to
+                              // a macrotask focuses it after that flush.
+                              if (el) setTimeout(() => { el.focus(); el.select() }, 0)
+                            }}
+                            className="title-edit-input conv-title-edit-input"
+                            value={editingTitleValue}
+                            onChange={(e) => setEditingTitleValue(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={titleEditKeyDown}
+                            onBlur={commitEditingTitle}
+                          />
+                        ) : (
                           <button
-                            className="conv-action-btn"
-                            onClick={() => handleRename(c.session_id, c.title || 'New Chat')}
-                            title="Rename"
+                            id={`conv-${c.session_id}`}
+                            className="conv-item-btn"
+                            onClick={() => {
+                              // Re-clicking the already-open conversation must
+                              // be a no-op: setSessionId(same value) doesn't
+                              // change state, so the effect that reloads
+                              // messages and clears messagesLoading below
+                              // never re-fires -- without this guard, the
+                              // chat gets stuck showing a blank loading
+                              // placeholder with messages permanently [].
+                              if (c.session_id === sessionId) return
+                              setMessagesLoading(true)
+                              setMessages([])
+                              setSessionId(c.session_id)
+                            }}
+                            onDoubleClick={() => startEditingTitle(c.session_id, c.title || 'New Chat')}
                           >
-                            <Ic.Rename />
+                            {c.title || 'New Chat'}
                           </button>
+                        )}
+                        <div className="conv-actions">
+                          {editingConvId === c.session_id ? (
+                            <button
+                              className="conv-action-btn"
+                              onMouseDown={(e) => { e.preventDefault(); commitEditingTitle(); }}
+                              title="Save"
+                            >
+                              <Ic.Check />
+                            </button>
+                          ) : (
+                            <button
+                              className="conv-action-btn"
+                              onClick={() => startEditingTitle(c.session_id, c.title || 'New Chat')}
+                              title="Rename"
+                            >
+                              <Ic.Rename />
+                            </button>
+                          )}
                           <button
                             className="conv-action-btn danger"
                             onClick={() => handleDelete(c.session_id)}
@@ -1151,21 +1238,58 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
 
                 <div className="chat-header">
                   <div className="chat-title-group">
-                    <button 
-                      className="sidebar-toggle-btn" 
+                    <button
+                      className="home-icon-btn"
+                      onClick={onBack}
+                      title="Back to home"
+                    >
+                      <Ic.ArrowLeft />
+                    </button>
+                    <button
+                      className="sidebar-toggle-btn"
                       onClick={() => setSidebarOpen(!sidebarOpen)}
                       title="Toggle Sidebar"
                     >
-                      <Ic.Bar />
+                      <Ic.PanelToggle />
                     </button>
-                    <span className="chat-title">{title}</span>
-                    <button
-                      className="chat-rename-btn"
-                      onClick={() => handleRename(sessionId!, title)}
-                      title="Rename Conversation"
-                    >
-                      <Ic.Rename />
-                    </button>
+                    {editingConvId === sessionId ? (
+                      <>
+                        <input
+                          ref={(el) => {
+                            if (el) setTimeout(() => { el.focus(); el.select() }, 0)
+                          }}
+                          className="title-edit-input"
+                          value={editingTitleValue}
+                          onChange={(e) => setEditingTitleValue(e.target.value)}
+                          onKeyDown={titleEditKeyDown}
+                          onBlur={commitEditingTitle}
+                        />
+                        <button
+                          className="chat-rename-btn"
+                          onMouseDown={(e) => { e.preventDefault(); commitEditingTitle(); }}
+                          title="Save"
+                        >
+                          <Ic.Check />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className="chat-title"
+                          onClick={() => sessionId && startEditingTitle(sessionId, title)}
+                          title="Click to rename"
+                        >
+                          {title}
+                        </span>
+                        <button
+                          className="chat-rename-btn"
+                          onClick={() => sessionId && startEditingTitle(sessionId, title)}
+                          title="Rename Conversation"
+                        >
+                          <Ic.Rename />
+                        </button>
+                      </>
+                    )}
                   </div>
                   {status && (
                     <span className="chat-meta">{status.llm_model}</span>
@@ -1205,6 +1329,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                 ) : (
                   <div
                     key={sessionId}
+                    ref={messagesContainerRef}
                     className={`messages${activeSelection ? ' has-selection' : ''}`}
                     onMouseUp={handleTextSelection}
                   >
@@ -1215,8 +1340,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                         isLast={i === messages.length - 1}
                         isStreaming={streaming}
                         onEdit={handleEditMessage}
-                        onConfirmWeb={handleConfirmWebSearch}
-                        onDeclineWeb={handleDeclineWebSearch}
                       />
                     ))}
                     <div ref={messagesEndRef} />
@@ -1288,7 +1411,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                       </button>
                     </div>
                     <div className="input-footer">
-                      <span className="input-hint">Enter to send · Shift+Enter for newline</span>
+                      <div className="ai-disclaimer">
+                        Jignasa is an AI and can make mistakes. Always check the sources.
+                      </div>
                       <span className={`char-count ${input.length > MAX_CHARS * 0.85 ? 'warn' : ''}`}>
                         {input.length}/{MAX_CHARS}
                       </span>
@@ -1310,6 +1435,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           onSave={(s) => { setLLMSettings(s); setLlmSettingsState(s) }}
           onClose={() => setShowSettingsModal(false)}
         />
+      )}
+      {showMemoryModal && (
+        <MemoryModal onClose={() => setShowMemoryModal(false)} />
       )}
     </>
   )
