@@ -13,7 +13,7 @@ from statistics import mean
 
 import faiss
 import numpy as np
-from langchain_huggingface import HuggingFaceEmbeddings
+from sentence_transformers import SentenceTransformer
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 RAG_INDEX_DIR = PROJECT_DIR / "rag_index"
@@ -77,9 +77,9 @@ def search(
     k: int,
     index: faiss.Index,
     metadata: dict[str, dict],
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: SentenceTransformer,
 ) -> list[dict]:
-    query_vector = np.asarray([embeddings.embed_query(query)], dtype=np.float32)
+    query_vector = np.asarray([embeddings.encode(query, normalize_embeddings=True)], dtype=np.float32)
     faiss.normalize_L2(query_vector)
     scores, ids = index.search(query_vector, k)
     hits: list[dict] = []
@@ -126,10 +126,7 @@ def compute_row(hits: list[dict], expected_document: str, k: int) -> dict:
 
 def run_evaluation(*, k: int = DEFAULT_K) -> tuple[MetricsSummary, list[dict]]:
     index, metadata = load_index()
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    embeddings = SentenceTransformer(EMBEDDING_MODEL)
 
     with EVALUATION_SET_PATH.open("r", encoding="utf-8") as f:
         items = json.load(f)

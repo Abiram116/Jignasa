@@ -6,7 +6,8 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from statistics import mean
 
-from langchain_huggingface import HuggingFaceEmbeddings
+from sentence_transformers import SentenceTransformer
+
 from scripts.evaluate_rag_metrics import (
     EMBEDDING_MODEL,
     EVALUATION_SET_PATH,
@@ -63,10 +64,7 @@ def _evaluate_rows(k: int) -> Iterator[tuple[int, int, str, dict, float, list[di
     """Yield (current, total, question, row, elapsed, all_rows_so_far) per question."""
     start = time.perf_counter()
     index, metadata = load_index()
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    embeddings = SentenceTransformer(EMBEDDING_MODEL)
     items = json.loads(EVALUATION_SET_PATH.read_text(encoding="utf-8"))
     total = len(items)
     rows: list[dict] = []

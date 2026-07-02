@@ -54,21 +54,18 @@ def load_all_chunks() -> list[dict]:
 
 
 def main() -> None:
-    from langchain_huggingface import HuggingFaceEmbeddings
+    from sentence_transformers import SentenceTransformer
 
     chunks = load_all_chunks()
     low_conf = sum(1 for c in chunks if c["metadata"].get("low_confidence"))
     print(f"Loaded {len(chunks)} chunks ({low_conf} flagged low_confidence)")
 
     print(f"Loading embedding model: {EMBEDDING_MODEL} ...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    embeddings = SentenceTransformer(EMBEDDING_MODEL)
 
     texts = [c["text"] for c in chunks]
     print(f"Embedding {len(texts)} chunks ...")
-    vectors = np.asarray(embeddings.embed_documents(texts), dtype=np.float32)
+    vectors = np.asarray(embeddings.encode(texts, normalize_embeddings=True), dtype=np.float32)
     faiss.normalize_L2(vectors)
 
     ids = np.arange(len(chunks), dtype=np.int64)

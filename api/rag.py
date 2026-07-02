@@ -5,7 +5,7 @@ from functools import lru_cache
 
 import faiss
 import numpy as np
-from langchain_huggingface import HuggingFaceEmbeddings
+from sentence_transformers import SentenceTransformer
 
 from api.config import (
     EMBEDDING_MODEL,
@@ -19,11 +19,8 @@ from api.security import neutralise_injection
 
 
 @lru_cache(maxsize=1)
-def _embeddings() -> HuggingFaceEmbeddings:
-    return HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        encode_kwargs={"normalize_embeddings": True},
-    )
+def _embeddings() -> SentenceTransformer:
+    return SentenceTransformer(EMBEDDING_MODEL)
 
 
 def index_ready() -> bool:
@@ -67,7 +64,7 @@ def search(query: str, k: int = TOP_K) -> list[dict]:
     """Search FAISS using the raw query string."""
     index, vectors = load_index()
     emb = _embeddings()
-    qv = np.asarray([emb.embed_query(query)], dtype=np.float32)
+    qv = np.asarray([emb.encode(query, normalize_embeddings=True)], dtype=np.float32)
     faiss.normalize_L2(qv)
     scores, ids = index.search(qv, k)
     hits: list[dict] = []

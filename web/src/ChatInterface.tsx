@@ -10,6 +10,7 @@ import {
   renameConversation,
   fetchConversations,
   fetchMessages,
+  friendlyError,
   getLLMSettings,
   setLLMSettings,
   savePartialAssistant,
@@ -613,7 +614,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
         setTitle(data.title || 'New Chat')
         setMessages(data.messages)
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(friendlyError(e)))
       .finally(() => setMessagesLoading(false))
   }, [sessionId])
 
@@ -666,7 +667,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
       await refreshConversations()
       if (id === sessionId) setTitle(newTitle)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e))
     }
   }
 
@@ -699,7 +700,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
       setMessages(messages.slice(0, messages.findIndex((m) => m.id === msg.id)))
       await runStream(sessionId, newText)
     } catch (e) {
-      setError(String(e))
+      setError(friendlyError(e))
     }
   }
 
@@ -851,7 +852,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           setMessages((m) => m.slice(0, -1))
         }
       } else {
-        setError(String(e))
+        setError(friendlyError(e))
       }
     } finally {
       setStreaming(false)

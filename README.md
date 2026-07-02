@@ -98,37 +98,120 @@ Every response streams token-by-token over Server-Sent Events. The loop decides 
 
 ## Quick start
 
+**Before you start**, you need these installed on your machine:
+
+| Tool | Why | Get it |
+|---|---|---|
+| Git | to clone this repo | [git-scm.com](https://git-scm.com/downloads) |
+| Python 3.11+ | runs the backend | [python.org](https://www.python.org/downloads/) |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | Python dependency manager this project uses | `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Mac/Linux) or see the link for Windows |
+| Node.js 18+ | runs the frontend | [nodejs.org](https://nodejs.org/) |
+
+Ollama is **not** in that table on purpose — see Step 4 below, it's one of
+two choices, not a hard requirement.
+
+**Step 1 — get the code:**
 ```bash
-# 1. Python deps
+git clone https://github.com/Abiram116/Jignasa.git
+```
+```bash
+cd Jignasa
+```
+
+**Step 2 — install dependencies** (backend, then frontend):
+```bash
 uv sync
-
-# 2. Frontend deps
+```
+```bash
 cd web && npm install && cd ..
+```
 
-# 3. Make sure Ollama is running with the model pulled
-ollama pull qwen3:8b
+**Step 3 — (optional) add your own documents.** Jignasa can answer
+questions about PDFs you give it, but this step is entirely optional —
+skip straight to Step 4 if you just want to try casual chat and live web
+search first. If you do want document Q&A: drop your PDF(s) into the
+`knowledge-base/` folder, then build the search index from them:
+```bash
+uv run python3 pipeline/01_profile_corpus.py
+```
+```bash
+uv run python3 pipeline/02_parse_and_chunk.py
+```
+```bash
+uv run python3 pipeline/03_build_index.py
+```
+(Each command prints what to do next if something's missing — e.g. if
+`knowledge-base/` is empty, it'll tell you that instead of crashing.)
 
-# 4. Build the document index (one-time, or whenever your PDFs change)
-python3 pipeline/01_profile_corpus.py
-python3 pipeline/02_parse_and_chunk.py
-python3 pipeline/03_build_index.py
+**Step 4 — choose how it should think.** Pick one:
 
-# 5. Run it
+- **Option A — fully local (free, private, needs a one-time download).**
+  Install [Ollama](https://ollama.com/download) itself first, then pull a
+  model:
+  ```bash
+  ollama pull qwen3:8b
+  ```
+  Already have Ollama with other models pulled from something else? You
+  don't need to repull `qwen3:8b` specifically — once the app is running,
+  open **Settings** and it automatically lists every model you've already
+  got installed, so you can pick any of them instead.
+- **Option B — bring your own API key, no local model at all.** Skip
+  Ollama entirely. Start the app (Step 5), open **Settings**, and paste in
+  an OpenAI, Anthropic, or Gemini API key — your key is only ever used for
+  that one request and is never stored on the server. Note: with this
+  option, casual chat works fully through your chosen cloud model, but
+  document search / live web search and long-term memory currently still
+  need a local Ollama connection for their own internal decision step —
+  without Ollama running at all, those specific features stay off and
+  Jignasa behaves as a plain chat assistant using your API key.
+
+**Step 5 — run it** (starts backend + frontend together):
+```bash
 ./run_all.sh
 ```
 
-Open `http://localhost:5173`. The API runs separately at `http://localhost:8000`.
+Open `http://localhost:5173` in your browser — that's the app. The backend
+API runs separately at `http://localhost:8000` (the frontend talks to it
+automatically, you don't need to open that one yourself).
 
-With it running, open that URL in Chrome or Edge and you'll see an "Install
-Jignasa" icon appear in the address bar — installing gives it its own window
-and taskbar/dock icon, with no browser chrome, so it stops feeling like a
-random `localhost` tab. This is a browser feature, not a separate download:
-it's still the exact same backend and frontend you just started, only
-presented as an app window instead of a page. (Firefox doesn't support
-installable web apps on desktop, so this step needs Chrome/Edge
-specifically.)
+**Or double-click to launch it, instead of typing the command:**
 
-Drop your own PDFs into `knowledge-base/` before step 4 — see [`knowledge-base/README.md`](knowledge-base/README.md). (Skip this and the scripts will tell you clearly what to do next, not crash.) PDFs can also be added later through the running app itself — an "Add document" button in the chat sidebar uploads and indexes a file without touching the terminal.
+| Platform | What to double-click | Notes |
+|---|---|---|
+| Mac | `run_all.command` | Opens Terminal.app, starts everything, opens your browser automatically |
+| Linux (desktop) | `Jignasa.desktop` | Open it in a text editor first and replace the two `/path/to/your/Jignasa` placeholders with wherever you actually cloned it, then double-click. Most file managers will ask to confirm "Allow Launching" the first time only — that's normal |
+| Windows (native — Python/Node/Ollama installed directly on Windows) | `run_all.bat` | Opens two console windows (backend, frontend) and your browser. Closing both windows stops the app |
+| Windows via **WSL** | — | Don't use `run_all.bat` — it runs as a native Windows process and won't see anything installed inside your WSL distro. Keep using `./run_all.sh` from your WSL terminal exactly as before |
+
+Any of these break if you move the project folder afterward, the same way
+any desktop shortcut to any app breaks if you move that app — just
+re-point it (or re-edit the path, for the Linux one) if that happens.
+
+A note on the commands above: every Python command is prefixed with
+`uv run` — that's what tells it to use the dependencies from Step 2
+instead of your system Python. If you ever run one without it, you'll get
+a `ModuleNotFoundError`.
+
+**Prefer Docker instead of installing Python/Node yourself?** Skip Steps
+2-5 above and see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — one
+`docker compose up` does the same thing.
+
+**Installing it as an app is completely optional.** Using
+`http://localhost:5173` as a normal webpage in any browser works exactly
+the same — nothing is locked behind installing it. If you'd rather it not
+look like a browser tab, open that URL specifically in **Chrome or Edge**
+and you'll see an "Install Jignasa" icon appear in the address bar;
+clicking it gives the app its own window and taskbar/dock icon, no browser
+chrome. This only works in Chrome/Edge — Firefox and Safari don't support
+installing web apps this way on desktop, so on those browsers (or if you
+just don't bother clicking it) you use the regular webpage, which is fully
+supported too. Either way it's the exact same backend and frontend, just
+presented as an app window instead of a page.
+
+PDFs can also be added or removed later through the running app itself —
+an "Add document" button in the chat sidebar uploads and indexes a file
+without touching the terminal again. See
+[`knowledge-base/README.md`](knowledge-base/README.md) for more.
 
 **Prefer Docker?** One `docker compose up` runs the whole stack — backend, frontend, and Ollama — with no Python/Node toolchain needed on your machine. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 

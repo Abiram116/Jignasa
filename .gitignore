@@ -91,6 +91,7 @@ logs/
 # --- React web app ---
 web/node_modules/
 web/dist/
+web/dev-dist/
 web/.eslintcache
 web/*.log
 web/npm-debug.log*

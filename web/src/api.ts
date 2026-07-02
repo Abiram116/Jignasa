@@ -2,6 +2,40 @@ import type { AgentStep, ChatMode, Conversation, EvaluationSummaryResponse, LLMS
 
 const API = '/api'
 
+// Deliberate, explicit action only -- never wired to a browser unload/close
+// event, since a refresh fires the same event and would otherwise kill the
+// whole app. The backend terminates itself right after responding, so the
+// connection dropping (rather than a clean JSON reply) is the expected,
+// successful outcome here -- not an error to surface.
+export async function shutdownApp(): Promise<void> {
+  try {
+    await fetch(`${API}/shutdown`, { method: 'POST' })
+  } catch {
+    // Expected: the server may drop the connection before replying.
+  }
+}
+
+// A dead/unreachable backend (terminal closed, process crashed, port
+// conflict) surfaces two different ways depending on the path the request
+// takes, and shows as an ugly raw string either way if left unclassified:
+//   - A direct fetch() failure throws "TypeError: Failed to fetch" (Chrome),
+//     "NetworkError when attempting to fetch resource." (Firefox), "Load
+//     failed" (Safari).
+//   - Through Vite's dev-server proxy specifically, fetch() does NOT throw
+//     at all -- the proxy returns a real HTTP response with an empty body
+//     and a 502/503/504 status, which consumeSSE() (this file) turns into
+//     "Backend unreachable (502)". Verified this is the actual path hit in
+//     local dev by killing the backend mid-session and inspecting the real
+//     error, not guessed from browser docs alone.
+export function friendlyError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  console.error(e)
+  if (/Failed to fetch|NetworkError|Load failed|ERR_CONNECTION|Backend unreachable/i.test(raw)) {
+    return "Can't reach the Jignasa backend. Make sure it's still running, then try again."
+  }
+  return 'Something went wrong. Please try again.'
+}
+
 // BYOK: stored client-side only, sent per-request to our own backend, never
 // written to any database (api/main.py never passes it to db.append_message
 // or set_cached -- see ChatRequest.llm_api_key in api/main.py).
@@ -119,13 +153,23 @@ export type ChatEvent =
 async function consumeSSE<E>(res: Response, onEvent: (event: E) => void): Promise<void> {
   if (!res.ok) {
     const text = await res.text()
+    let detail: string | null = null
     try {
       const json = JSON.parse(text)
-      if (json.detail) throw new Error(typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail))
+      if (json.detail) detail = typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail)
     } catch {
-      // Not JSON or no detail, just throw the text
+      // Not JSON, fall through -- detail stays null
     }
-    throw new Error(text)
+    if (detail) throw new Error(detail)
+    // A dead backend doesn't always make fetch() itself throw -- Vite's dev
+    // proxy (and some reverse proxies) instead return a real HTTP response
+    // with an empty body and a gateway status (502/503/504) when it can't
+    // reach the upstream server. An empty string here would otherwise
+    // produce a blank/unhelpful error message.
+    if ([502, 503, 504].includes(res.status)) {
+      throw new Error(`Backend unreachable (${res.status})`)
+    }
+    throw new Error(text || `Request failed (${res.status})`)
   }
   const reader = res.body?.getReader()
   if (!reader) throw new Error('No response body')

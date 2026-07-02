@@ -21,6 +21,11 @@ export default defineConfig({
     !isStaticDemo &&
       VitePWA({
         registerType: 'autoUpdate',
+        // Without this, the manifest/service worker only exist in a
+        // production build (`npm run build`) -- the everyday `./run_all.sh`
+        // dev-server flow on :5173 would never show an install prompt at
+        // all, which defeats the point for anyone just running it locally.
+        devOptions: { enabled: true, type: 'module' },
         // No runtimeCaching entries -- every /api/* request (including the
         // SSE chat stream) goes straight to the network, untouched by the
         // service worker. It only precaches the built JS/CSS/HTML so the

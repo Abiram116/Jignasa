@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { getOllamaModels } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { getOllamaModels, shutdownApp } from './api'
 import type { LLMProvider, LLMSettings } from './types'
 
 const PROVIDERS: { value: LLMProvider; label: string; placeholder: string }[] = [
@@ -41,6 +41,40 @@ export function SettingsModal({
   }
 
   const active = PROVIDERS.find((p) => p.value === provider)!
+
+  // Click-to-arm confirm, same pattern as MemoryModal's "Clear all" -- no
+  // native confirm() dialog. Deliberately a manual button click only, never
+  // tied to closing the tab/window: that event also fires on a page
+  // refresh, which would otherwise kill the whole app on an accidental F5.
+  const [quitArmed, setQuitArmed] = useState(false)
+  const [quitting, setQuitting] = useState(false)
+  const quitTimeoutRef = useRef<number | null>(null)
+  useEffect(() => () => { if (quitTimeoutRef.current) window.clearTimeout(quitTimeoutRef.current) }, [])
+
+  const handleQuit = async () => {
+    if (!quitArmed) {
+      setQuitArmed(true)
+      quitTimeoutRef.current = window.setTimeout(() => setQuitArmed(false), 4000)
+      return
+    }
+    if (quitTimeoutRef.current) window.clearTimeout(quitTimeoutRef.current)
+    setQuitting(true)
+    await shutdownApp()
+  }
+
+  if (quitting) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-body" style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+            <p className="cost-summary">
+              Jignasa has been shut down. It's safe to close this tab or window now.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -128,6 +162,20 @@ export function SettingsModal({
           >
             Save
           </button>
+
+          <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-2)' }}>
+            <p className="cost-note" style={{ marginBottom: '0.5rem' }}>
+              Stops the local backend server running this app. You'll need to
+              start it again from the terminal to use Jignasa afterward.
+            </p>
+            <button
+              className={`memory-clear-all${quitArmed ? ' confirm-armed' : ''}`}
+              onClick={handleQuit}
+              title={quitArmed ? 'Click again to confirm' : undefined}
+            >
+              {quitArmed ? 'Click again to confirm' : 'Quit Jignasa'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

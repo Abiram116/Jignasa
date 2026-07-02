@@ -4,35 +4,60 @@
 
 `master` is always meant to be the version someone can clone and run right
 now. So the workflow is always: **build and test your change on your own
-machine first, using the exact same local setup described in the root
-[README.md](README.md#quick-start), then open a Pull Request** — never push
-a new feature straight to `master`.
+machine first, then open a Pull Request** — you can't push directly to this
+repo's `master` (you don't have write access to it), and even if you did,
+don't.
 
+## Step-by-step: your first contribution
+
+**1. Fork the repo.** Go to
+[github.com/Abiram116/Jignasa](https://github.com/Abiram116/Jignasa) and
+click the **Fork** button (top right). This creates your own copy of the
+repo under your GitHub account — `github.com/<your-username>/Jignasa` —
+that you can freely push to.
+
+**2. Clone your fork** (not the original) to your machine:
 ```bash
-# 1. Fork the repo, then clone your fork
-git clone git@github.com:<you>/Jignasa.git
+git clone https://github.com/<your-username>/Jignasa.git
 cd Jignasa
+```
 
-# 2. Branch off master
+**3. Create a branch for your change** — never work directly on `master`,
+even in your own fork:
+```bash
 git checkout -b feature/short-description
+```
 
-# 3. Set up and run it locally -- same steps as the README's Quick Start
+**4. Set it up and run it locally** — identical to the root
+[README.md](README.md#quick-start)'s Quick Start:
+```bash
 uv sync
 cd web && npm install && cd ..
 ollama pull qwen3:8b
 ./run_all.sh
 ```
-
-That gives you `http://localhost:5173` (frontend) talking to
+This gives you `http://localhost:5173` (frontend) talking to
 `http://localhost:8000` (API), running against your own local Ollama —
-completely isolated from anyone else, so you can test a new feature or a
-change to the agent loop as many times as you need before it ever touches
-the real `master`.
+completely isolated from anyone else's copy, so you can test your change as
+many times as you need before it goes near the real project.
+
+**5. Make your change, commit it, push it to *your fork*:**
+```bash
+git add .
+git commit -m "short description of what changed and why"
+git push origin feature/short-description
+```
+
+**6. Open the Pull Request.** Go back to your fork on GitHub — it'll show a
+"Compare & pull request" button for the branch you just pushed. Click it,
+make sure the base is set to `Abiram116/Jignasa` → `master`, fill in the
+description (see "Opening the Pull Request" below), and submit. From here
+the review happens on GitHub, not in your terminal.
 
 ## Before opening a Pull Request
 
 - **If you touched `api/agent.py`'s decision prompt or tool schema**, run
-  `python3 scripts/eval_tool_selection.py` and paste the pass/fail count
+  `uv run python3 scripts/eval_tool_selection.py` and paste the pass/fail count
   into your PR description. That prompt has regressed silently before from
   a single anecdotal tweak — see "The adaptive ReAct loop" in
   [`docs/TECHNICAL.md`](docs/TECHNICAL.md) for the actual story. This eval
@@ -64,10 +89,14 @@ There's no linter-enforced style guide beyond what's already in the repo —
 match the conventions of the file you're editing. A few real, load-bearing
 patterns worth knowing before you deviate from them:
 
-- **No LangChain, anywhere.** The RAG pipeline and the agent loop are both
-  hand-written on purpose — see [`docs/AGENT_ROADMAP.md`](docs/AGENT_ROADMAP.md)
-  and [`pipeline/README.md`](pipeline/README.md) for why. A PR that
-  reintroduces a framework dependency to save a few lines will get pushback.
+- **No LangChain in the RAG pipeline or agent loop.** Both are hand-written
+  on purpose — see [`docs/AGENT_ROADMAP.md`](docs/AGENT_ROADMAP.md) and
+  [`pipeline/README.md`](pipeline/README.md) for why. The one exception is
+  `scripts/evaluate_ragas.py`, which wraps the local judge model in
+  `langchain-ollama`/`langchain-huggingface` only because the RAGAS
+  library's own API requires a LangChain-shaped model object — isolated to
+  one offline evaluation script that never runs as part of the live
+  product. A PR that reintroduces LangChain anywhere else will get pushback.
 - **Every non-obvious "why" gets a comment or a README line**, not a
   restatement of what the code already says. Look at any existing docstring
   in `api/` for the bar this is held to.

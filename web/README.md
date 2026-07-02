@@ -181,6 +181,14 @@ not a separate native wrapper. Configured in `vite.config.ts`, skipped
 entirely on the `VITE_STATIC_DEMO` showcase build (installing a page with no
 backend behind it would just be broken).
 
+**`devOptions: { enabled: true }` is required, not optional.** By default
+`vite-plugin-pwa` only injects the manifest/service worker into a
+production build (`npm run build`) — the actual everyday way this project
+runs, `./run_all.sh`'s Vite dev server on `:5173`, would never show an
+install prompt at all without this flag. Found by testing the real
+`./run_all.sh` flow after initially only verifying against the built,
+backend-served version on `:8000`.
+
 **Deliberately no offline caching.** The generated service worker has no
 `runtimeCaching` rules, so every `/api/*` request — including the SSE chat
 stream — goes straight to the network, completely untouched by the service

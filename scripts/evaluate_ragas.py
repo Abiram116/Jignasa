@@ -23,6 +23,14 @@ a real constraint worth knowing: a smaller local judge model is less
 reliable than e.g. GPT-4 as a judge, so treat absolute scores as directional
 within this project, not as a universal/comparable RAGAS benchmark.
 
+This is also the ONE place LangChain appears anywhere in this project.
+It's not a design choice -- RAGAS's own `evaluate()` API expects an
+`llm=`/`embeddings=` object wrapped in its `LangchainLLMWrapper`/
+`LangchainEmbeddingsWrapper` classes, and that's the only supported way to
+hand it a local Ollama model today. The actual RAG pipeline (`api/rag.py`,
+`pipeline/`) and the agent loop (`api/agent.py`) call `sentence-transformers`
+and Ollama directly, with no LangChain involved.
+
 Why per-question checkpointing: each question costs 1 generation call plus
 ~4-8 judge calls on an 8b local model -- multiple minutes per question, not
 seconds. Without checkpointing, killing the process (Ctrl+C, needing the

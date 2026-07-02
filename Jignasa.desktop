@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Jignasa
+Comment=Fully local RAG assistant
+Exec=bash -c "cd /path/to/your/Jignasa && JIGNASA_OPEN_BROWSER=1 ./run_all.sh"
+Icon=/path/to/your/Jignasa/web/public/pwa-icon-512.png
+Terminal=true
+Categories=Development;

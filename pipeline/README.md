@@ -79,10 +79,10 @@ the crash that caused silent data-quality loss last time.
 
 ```bash
 cd Jignasa   # repo root
-python3 pipeline/01_profile_corpus.py
-python3 pipeline/02_parse_and_chunk.py   # resumable; skips PDFs already chunked
-python3 pipeline/03_build_index.py
-python3 pipeline/04_generate_eval_set.py
+uv run python3 pipeline/01_profile_corpus.py
+uv run python3 pipeline/02_parse_and_chunk.py   # resumable; skips PDFs already chunked
+uv run python3 pipeline/03_build_index.py
+uv run python3 pipeline/04_generate_eval_set.py
 ```
 
 Delete a PDF's `rag_index/parsed_markdown/<name>.chunks.json` to force

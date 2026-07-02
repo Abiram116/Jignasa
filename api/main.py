@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import signal
 import time
 from collections.abc import Iterator
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,17 +45,20 @@ from api.websearch import build_web_prompt, web_search
 logger = logging.getLogger("jignasa")
 
 # ── Allowed origins ───────────────────────────────────────────────────
-_CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# Regex, not a fixed list: Vite's dev server auto-increments to the next
+# free port (5174, 5175, ...) when 5173 is already taken by something else
+# on the user's machine -- a hardcoded "localhost:5173" would silently
+# CORS-block the app the moment that happens. Still loopback-only (no
+# wildcard host, just no hardcoded port), matching the same "no wildcard"
+# principle as before.
+_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
 app = FastAPI(title="Jignasa PDF RAG API")
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
@@ -132,6 +137,43 @@ def get_ollama_models() -> list[dict]:
         return [{"name": m.model, "size_bytes": m.size} for m in resp.models]
     except Exception:
         return []
+
+
+def _terminate_self() -> None:
+    """Runs as a BackgroundTask, so it only fires after the HTTP response
+    below has actually been sent -- the client gets a clean confirmation
+    before the process disappears from under it.
+
+    Signals the whole process GROUP, not just this PID: uvicorn --reload
+    (used by run_all.sh) runs as a supervisor process plus a separate
+    worker subprocess, and killing only the worker risks the supervisor
+    auto-respawning it, silently undoing the shutdown. Targeting the
+    process group is exactly what happens when you Ctrl+C in a terminal --
+    it reaches both at once, whether or not --reload is in play.
+    """
+    os.killpg(os.getpgid(0), signal.SIGTERM)
+
+
+@app.post("/api/shutdown")
+def shutdown(request: Request) -> JSONResponse:
+    """
+    Explicit, deliberate "Quit Jignasa" action from the UI -- never
+    triggered automatically by closing a tab or refreshing (that would make
+    a page refresh kill the whole app, which is worse than the problem this
+    solves). SIGTERM lets uvicorn run its own graceful shutdown, the same
+    path Ctrl+C already takes; run_all.sh's cleanup then stops the frontend
+    dev server too once it notices the backend process has exited.
+
+    Restricted to loopback only, and deliberately checking the raw TCP
+    peer address (request.client.host) rather than get_client_ip()'s
+    X-Forwarded-For-trusting logic -- that header is trivially spoofable by
+    any client, which would be a real problem for an action this
+    destructive, even though it's an acceptable trade-off for rate-limiting.
+    """
+    peer = request.client.host if request.client else None
+    if peer not in ("127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="Shutdown is only allowed from localhost.")
+    return JSONResponse({"ok": True}, background=BackgroundTask(_terminate_self))
 
 
 @app.get("/api/conversations")

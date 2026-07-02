@@ -141,7 +141,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "   # Vite HMR needs these; remove for prod build
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self' http://localhost:5173 http://127.0.0.1:5173; "
+            # ':*' is valid CSP port-wildcard syntax (any port on that host)
+            # -- not a hardcoded 5173, since Vite auto-increments to the
+            # next free port when 5173 is already taken by something else.
+            "connect-src 'self' http://localhost:* http://127.0.0.1:*; "
             "img-src 'self' data:; "
             "frame-ancestors 'none';"
         )

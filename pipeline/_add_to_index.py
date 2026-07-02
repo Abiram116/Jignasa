@@ -49,18 +49,15 @@ def main() -> None:
         print("No chunks to add (empty file).")
         return
 
-    from langchain_huggingface import HuggingFaceEmbeddings
+    from sentence_transformers import SentenceTransformer
 
     print(f"Loading embedding model: {EMBEDDING_MODEL} ...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    embeddings = SentenceTransformer(EMBEDDING_MODEL)
 
     print("[stage] embedding", flush=True)
     texts = [c["text"] for c in chunks]
     print(f"Embedding {len(texts)} new chunks ...")
-    vectors = np.asarray(embeddings.embed_documents(texts), dtype=np.float32)
+    vectors = np.asarray(embeddings.encode(texts, normalize_embeddings=True), dtype=np.float32)
     faiss.normalize_L2(vectors)
 
     metadata = {"next_id": 0, "vectors": {}}
