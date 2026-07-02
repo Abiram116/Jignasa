@@ -1,0 +1,21 @@
+name: Publish GitHub Release
+
+# Fires only on a version tag (e.g. v1.0.0), never on a plain push to
+# master -- a release is a milestone, not every commit. Push your commits
+# normally; tag when you actually want a Release page to appear.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

@@ -51,6 +51,7 @@ The badge under each answer always reflects what actually happened that turn (PD
 - **Token cost calculator** — estimates what the whole conversation would have cost on GPT-4o, Claude, Gemini, etc. — useful context for why running locally is free, even though you're seeing real token numbers
 - **Model settings** — swap between local Ollama (pick from whatever models you've actually pulled, auto-detected) and your own OpenAI/Anthropic/Gemini key, per conversation
 - **Memory** — a sidebar panel showing everything Jignasa has remembered about you, with per-item delete and clear-all
+- **Installable as its own app, once it's running** — after you start it locally (see Quick Start below), Chrome/Edge can install it with its own icon and window, no address bar, no browser chrome. Not a separate download — same backend, same React bundle, just not stuck looking like a browser tab pointed at `localhost`
 
 ## Why it's worth a look
 
@@ -118,6 +119,15 @@ python3 pipeline/03_build_index.py
 
 Open `http://localhost:5173`. The API runs separately at `http://localhost:8000`.
 
+With it running, open that URL in Chrome or Edge and you'll see an "Install
+Jignasa" icon appear in the address bar — installing gives it its own window
+and taskbar/dock icon, with no browser chrome, so it stops feeling like a
+random `localhost` tab. This is a browser feature, not a separate download:
+it's still the exact same backend and frontend you just started, only
+presented as an app window instead of a page. (Firefox doesn't support
+installable web apps on desktop, so this step needs Chrome/Edge
+specifically.)
+
 Drop your own PDFs into `knowledge-base/` before step 4 — see [`knowledge-base/README.md`](knowledge-base/README.md). (Skip this and the scripts will tell you clearly what to do next, not crash.) PDFs can also be added later through the running app itself — an "Add document" button in the chat sidebar uploads and indexes a file without touching the terminal.
 
 **Prefer Docker?** One `docker compose up` runs the whole stack — backend, frontend, and Ollama — with no Python/Node toolchain needed on your machine. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -144,7 +154,9 @@ Built end-to-end — RAG pipeline, evaluation, backend, and frontend — by **Ab
 
 📧 [sreeabirammandava@gmail.com](mailto:sreeabirammandava@gmail.com) &nbsp;·&nbsp; 📞 +91 8309816750 &nbsp;·&nbsp; [GitHub Pages showcase](https://abiram116.github.io/Jignasa/)
 
-Licensed under [MIT](LICENSE) — use it, fork it, learn from it.
+Licensed under [MIT](LICENSE) — use it, fork it, learn from it. Want to
+contribute? See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the local
+test-before-PR workflow.
 
 ---
 

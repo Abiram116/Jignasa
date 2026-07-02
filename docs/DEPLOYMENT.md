@@ -96,3 +96,10 @@ local-first design, covered in more depth in
 - No GPU passthrough is configured by default — Ollama will run on CPU
   unless you add an `nvidia` runtime to the `ollama` service yourself
   (hardware-dependent, intentionally left out of the default compose file).
+- **Installing the app (see `web/README.md`) needs HTTPS off of
+  `localhost`.** Browsers treat `localhost`/`127.0.0.1` as a secure context
+  for free, so the install prompt works out of the box for local Docker use.
+  If you point this compose file at a real non-localhost host, put a
+  reverse proxy with TLS in front of it, or the browser won't offer to
+  install it (the chat itself still works fine over plain HTTP either way —
+  this only affects the install prompt).

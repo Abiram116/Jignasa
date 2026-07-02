@@ -173,6 +173,40 @@ a feature that wasn't earning its complexity. The chat is a single
 continuous thread; if you need to reference something specific, saying so
 in plain text works the same way a human conversation would.
 
+## Installable app (`vite-plugin-pwa`)
+
+The app can be installed from Chrome/Edge as its own window — own icon, no
+address bar — via a standard web app manifest and a minimal service worker,
+not a separate native wrapper. Configured in `vite.config.ts`, skipped
+entirely on the `VITE_STATIC_DEMO` showcase build (installing a page with no
+backend behind it would just be broken).
+
+**Deliberately no offline caching.** The generated service worker has no
+`runtimeCaching` rules, so every `/api/*` request — including the SSE chat
+stream — goes straight to the network, completely untouched by the service
+worker. It only precaches the built JS/CSS/HTML so the installed window has
+an icon and opens instantly. The point is installability, not an offline
+mode; a service worker that could serve a stale bundle or a cached chat
+response would be strictly worse than not having one. `registerType:
+'autoUpdate'` means a new deploy replaces the active service worker on the
+next load automatically, with no "close all tabs to update" prompt.
+
+**Icons**: rasterized from the existing brushstroke "J" favicon
+(`public/favicon.svg`) rather than a new design, since it's the same brand
+mark at a different job — 512x512 and 192x192 PNGs on a solid `--void`
+background, generated with Pillow (cubic-Bezier sampling of the same path
+data, then 4x supersampled and downsampled for anti-aliased edges — a naive
+single-pass polyline stroke left visible seam artifacts at the curve).
+Reused as-is for the `maskable` purpose too: the glyph already sits well
+within the safe-zone circle Android's icon mask requires, so no separate
+padded variant was needed.
+
+Verified end-to-end with a real (headlessly-patched) Firefox instance, the
+same one built earlier for the rename-bug investigation: manifest resolves
+and validates, the service worker registers and activates, and — the actual
+regression risk — a live chat still streams token-by-token with the service
+worker active, with zero console errors either way.
+
 ## GitHub Pages showcase build (`StaticShowcaseSection.tsx`)
 
 The same `HomePage.tsx` is reused for both the real app's homepage and the
