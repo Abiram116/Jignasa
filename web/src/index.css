@@ -1085,11 +1085,6 @@ img, svg { display: block; }
   color: var(--text-1);
 }
 
-/* When a selection is active (has-selection class on messages), keep highlight */
-.messages.has-selection .bubble.assistant *::selection {
-  background: rgba(139, 92, 246, 0.42);
-}
-
 .bubble.assistant {
   background: transparent;
   border: none;
@@ -1183,42 +1178,12 @@ img, svg { display: block; }
   background: rgba(255,255,255,0.06);
 }
 
-/* Click-to-arm confirm state (EditButton, MemoryModal's Clear all) --
+/* Click-to-arm confirm state (MemoryModal's Clear all, delete-conversation) --
    replaces native confirm() dialogs across the app. */
 .confirm-armed {
   color: var(--coral-400) !important;
   background: rgba(244,63,94,0.1) !important;
   font-weight: 600;
-}
-
-.floating-quote-btn {
-  position: fixed;
-  transform: translateX(-50%);
-  /* Solid background — no glass/transparency */
-  background: var(--indigo-600, #4f46e5);
-  border: 1px solid var(--indigo-400, #818cf8);
-  color: #fff;
-  padding: 0.38rem 0.8rem;
-  border-radius: var(--r-sm);
-  font-size: 0.75rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.4);
-  cursor: pointer;
-  z-index: 9999;
-  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
-  animation: slide-up 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: auto;
-  white-space: nowrap;
-  user-select: none;
-}
-.floating-quote-btn:hover {
-  background: var(--indigo-500, #6366f1);
-  border-color: var(--indigo-300, #a5b4fc);
-  transform: translateX(-50%) translateY(-1px);
-  box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(99,102,241,0.5);
 }
 
 /* ── Web Search Confirmation ── */
@@ -1633,58 +1598,6 @@ img, svg { display: block; }
 
 .mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* Quoted Text Preview */
-.quoted-text-preview {
-  margin-bottom: 0.25rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-2);
-  border-radius: var(--r-md);
-  padding: 0.6rem 0.85rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  position: relative;
-  overflow: hidden;
-  max-height: 140px;
-  animation: slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.quoted-text-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--indigo-300);
-}
-
-.quote-clear-btn {
-  background: none;
-  border: none;
-  color: var(--text-4);
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--t-fast);
-}
-.quote-clear-btn:hover {
-  color: var(--text-1);
-}
-
-.quoted-text-content {
-  font-size: 0.75rem;
-  color: var(--text-3);
-  font-family: ui-monospace, monospace;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  white-space: pre-wrap;
-  line-height: 1.5;
-}
-
 /* Input box */
 .input-box {
   display: flex;
@@ -2056,6 +1969,23 @@ tr:last-child td { border-bottom: none; }
 }
 .settings-field select:focus,
 .settings-field input:focus {
+  outline: none;
+  border-color: var(--border-2);
+}
+
+.edit-message-textarea {
+  width: 100%;
+  background: var(--cosmos);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-md);
+  padding: 0.65rem 0.8rem;
+  color: var(--text-1);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 100px;
+}
+.edit-message-textarea:focus {
   outline: none;
   border-color: var(--border-2);
 }
@@ -3396,14 +3326,6 @@ tr:last-child td { border-bottom: none; }
   text-decoration-color: var(--indigo-400);
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   Persistent selection highlight (violet theme, held while quote btn visible)
-═══════════════════════════════════════════════════════════════════ */
-.bubble.assistant ::selection,
-.messages.has-selection .bubble.assistant ::selection {
-  background: rgba(139,92,246,0.35);
-  color: var(--text-1);
-}
 
 /* ── PreLoader ──────────────────────────────────────────────────────── */
 .preloader-wrapper {

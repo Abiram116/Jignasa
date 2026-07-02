@@ -18,6 +18,7 @@ import {
 } from './api'
 import type { AgentStep, ChatMode, LLMSettings, Message, Source, WebSource } from './types'
 import { useAppState } from './AppContext'
+import { EditMessageModal } from './EditMessageModal'
 import { MemoryModal } from './MemoryModal'
 import { SettingsModal } from './SettingsModal'
 import { SidebarUploadView, useUploadQueue } from './SidebarUploadView'
@@ -41,11 +42,6 @@ const Ic = {
       <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
       <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
       <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  ),
-  Chat: () => (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
   PanelToggle: () => (
@@ -178,36 +174,6 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button className="bubble-action-btn" onClick={handleCopy} title="Copy">
       {copied ? <Ic.Check /> : <Ic.Copy />}
-    </button>
-  )
-}
-
-/* ── Edit button — click-to-arm, click-again-to-confirm. No native
-   confirm() dialog: same self-contained-state pattern as CopyButton. ── */
-function EditButton({ onConfirm }: { onConfirm: () => void }) {
-  const [armed, setArmed] = useState(false)
-  const timeoutRef = useRef<number | null>(null)
-
-  const handleClick = () => {
-    if (armed) {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
-      setArmed(false)
-      onConfirm()
-    } else {
-      setArmed(true)
-      timeoutRef.current = window.setTimeout(() => setArmed(false), 4000)
-    }
-  }
-
-  useEffect(() => () => { if (timeoutRef.current) window.clearTimeout(timeoutRef.current) }, [])
-
-  return (
-    <button
-      className={`bubble-action-btn edit-btn${armed ? ' confirm-armed' : ''}`}
-      onClick={handleClick}
-      title={armed ? 'Click again to confirm — deletes this message and everything after it' : 'Edit prompt'}
-    >
-      {armed ? 'Confirm?' : <><Ic.Pencil /> Edit</>}
     </button>
   )
 }
@@ -507,7 +473,9 @@ function MessageBubble({
         )}
         {msg.role === 'user' && !isStreaming && onEdit && (
           <div className="bubble-actions">
-            <EditButton onConfirm={() => onEdit(msg)} />
+            <button className="bubble-action-btn edit-btn" onClick={() => onEdit(msg)} title="Edit prompt">
+              <Ic.Pencil /> Edit
+            </button>
           </div>
         )}
       </div>
@@ -617,33 +585,12 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
 
-  // Selection highlight state — keeps the selection highlighted until quote is clicked
-  const [activeSelection, setActiveSelection] = useState<string | null>(null)
-  const [quoteSelection, setQuoteSelection] = useState<{text: string, top: number, left: number} | null>(null)
-  const [quotedText, setQuotedText] = useState<string | null>(null)
-
-
-
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const startTimeRef = useRef<number>(0)
 
   const MAX_CHARS = 2000
-
-  // Dismiss quote button on click outside
-  useEffect(() => {
-    const dismiss = (e: MouseEvent) => {
-      if ((e.target as Element).closest('.floating-quote-btn')) return
-      // Only dismiss if user isn't clicking inside a bubble (to let selection be read)
-      if (!(e.target as Element).closest('.bubble.assistant')) {
-        setQuoteSelection(null)
-        setActiveSelection(null)
-      }
-    }
-    document.addEventListener('mousedown', dismiss)
-    return () => document.removeEventListener('mousedown', dismiss)
-  }, [])
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -728,86 +675,44 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     if (e.key === 'Escape') { e.preventDefault(); cancelEditingTitle() }
   }
 
-  const handleEditMessage = async (msg: Message) => {
-    // Confirmation happens via EditButton's click-to-arm UI, not a native
-    // dialog -- by the time this runs, the user has already confirmed.
-    if (!sessionId || streaming) return
+  // Edit is a popup modal, not the old inline prefill-the-input flow: click
+  // Edit -> this just opens the modal with the message text; the modal's
+  // own Save/Cancel buttons are the confirmation, so there's no separate
+  // click-to-arm step needed on the button itself anymore.
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+
+  const handleEditMessage = (msg: Message) => {
+    if (streaming) return
     if (!msg.id) {
       setError("Can't edit this message yet — it hasn't finished saving. Try again in a moment.")
       return
     }
-    setInput(msg.message)
+    setEditingMessage(msg)
+  }
+
+  const handleConfirmEditMessage = async (newText: string) => {
+    const msg = editingMessage
+    if (!msg || !sessionId || !msg.id) return
+    setEditingMessage(null)
     try {
       await truncateConversation(sessionId, msg.id)
-      setMessages(messages.slice(0, messages.findIndex(m => m.id === msg.id)))
+      setMessages(messages.slice(0, messages.findIndex((m) => m.id === msg.id)))
+      await runStream(sessionId, newText)
     } catch (e) {
       setError(String(e))
     }
-  }
-
-  const handleTextSelection = (e: React.MouseEvent) => {
-    if ((e.target as Element).closest('.floating-quote-btn')) return
-
-    setTimeout(() => {
-      const selection = window.getSelection()
-      if (!selection || selection.isCollapsed) {
-        if (!quoteSelection) {
-          setActiveSelection(null)
-        }
-        return
-      }
-      const text = selection.toString().trim()
-      if (!text || text.length < 3) {
-        setQuoteSelection(null)
-        setActiveSelection(null)
-        return
-      }
-
-      const anchorNode = selection.anchorNode
-      if (!anchorNode) { setQuoteSelection(null); setActiveSelection(null); return }
-      const bubbleEl = (anchorNode.nodeType === Node.TEXT_NODE
-        ? anchorNode.parentElement
-        : anchorNode as Element
-      )?.closest('.bubble.assistant')
-      if (!bubbleEl) { setQuoteSelection(null); setActiveSelection(null); return }
-
-      const range = selection.getRangeAt(0)
-      const rect = range.getBoundingClientRect()
-      if (rect.width === 0 && rect.height === 0) { setQuoteSelection(null); return }
-
-      // Keep highlight alive by saving the selected text
-      setActiveSelection(text)
-      setQuoteSelection({
-        text,
-        top: rect.top - 44,
-        left: rect.left + rect.width / 2,
-      })
-    }, 10)
-  }
-
-  const applyQuote = () => {
-    if (!quoteSelection) return
-    setQuotedText(quoteSelection.text)
-    setQuoteSelection(null)
-    setActiveSelection(null)
-    window.getSelection()?.removeAllRanges()
   }
 
   const handleStop = () => {
     abortRef.current?.abort()
   }
 
-  const runStream = async (
-    targetSessionId: string,
-    userQuestion: string,
-    displayMessage: string,
-    activeQuote: string | null,
-  ) => {
+  const runStream = async (targetSessionId: string, userQuestion: string) => {
     setError('')
     setStreaming(true)
     startTimeRef.current = Date.now()
 
-    setMessages((m) => [...m, { role: 'user', message: displayMessage }])
+    setMessages((m) => [...m, { role: 'user', message: userQuestion }])
     setMessages((m) => [...m, { role: 'assistant', message: '' }])
 
     let pendingMode: ChatMode = 'rag'
@@ -883,7 +788,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           if (event.content) assistant = event.content
         }
         if (event.type === 'error') setError(event.message ?? 'Chat error')
-      }, activeQuote, controller.signal)
+      }, controller.signal)
 
 
         setMessages((m) => {
@@ -959,14 +864,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     if (!input.trim() || streaming) return
 
     const userQuestion = input.trim()
-    const activeQuote = quotedText
-
     setInput('')
-    setQuotedText(null)
-
-    const displayMessage = activeQuote
-      ? `> ${activeQuote}\n\n${userQuestion}`
-      : userQuestion
 
     let targetSessionId = sessionId
     if (!targetSessionId) {
@@ -976,7 +874,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
       await refreshConversations()
     }
 
-    await runStream(targetSessionId, userQuestion, displayMessage, activeQuote)
+    await runStream(targetSessionId, userQuestion)
   }
 
 
@@ -1330,8 +1228,7 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                   <div
                     key={sessionId}
                     ref={messagesContainerRef}
-                    className={`messages${activeSelection ? ' has-selection' : ''}`}
-                    onMouseUp={handleTextSelection}
+                    className="messages"
                   >
                     {messages.map((m, i) => (
                       <MessageBubble
@@ -1343,19 +1240,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                       />
                     ))}
                     <div ref={messagesEndRef} />
-
-                    {/* Floating Quote Button */}
-                    {quoteSelection && (
-                      <button
-                        className="floating-quote-btn"
-                        style={{ top: quoteSelection.top, left: quoteSelection.left }}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={applyQuote}
-                        title="Quote selected text"
-                      >
-                        <Ic.Chat /> Quote
-                      </button>
-                    )}
                   </div>
                 )}
 
@@ -1378,16 +1262,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                         </button>
                       ))}
                     </div>
-
-                    {quotedText && (
-                      <div className="quoted-text-preview">
-                        <div className="quoted-text-header">
-                          <Ic.Chat /> Replying to quote
-                          <button className="quote-clear-btn" onClick={() => setQuotedText(null)} title="Remove quote">✕</button>
-                        </div>
-                        <div className="quoted-text-content">{quotedText}</div>
-                      </div>
-                    )}
 
                     <div className="input-box">
                       <AutoTextarea
@@ -1438,6 +1312,13 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
       )}
       {showMemoryModal && (
         <MemoryModal onClose={() => setShowMemoryModal(false)} />
+      )}
+      {editingMessage && (
+        <EditMessageModal
+          message={editingMessage.message}
+          onSave={handleConfirmEditMessage}
+          onClose={() => setEditingMessage(null)}
+        />
       )}
     </>
   )

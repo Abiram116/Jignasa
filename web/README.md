@@ -152,6 +152,27 @@ later turn with no same-tick blur to race against. Verified with the same
 browser: without the fix the input's lifetime in the DOM was 0ms; with it,
 indefinite.
 
+**Editing a sent message (`EditMessageModal.tsx`)**: an earlier version
+edited in place — click "Edit" and the message bubble itself turned into a
+textarea. That collided with the same click-to-arm pattern used elsewhere
+in the sidebar (rename, delete-confirm), made the actual action (this
+truncates everything after the message and resends) easy to trigger by
+accident, and needed its own inline layout rules just for that one bubble
+state. Replaced with a single small modal: click "Edit" once, a popup opens
+pre-filled with the message text, a one-line warning states exactly what
+saving does, and `Cmd/Ctrl+Enter` submits. Simpler to reason about, and
+consistent with how every other modal in the app (settings, memory) already
+works.
+
+**Quote/highlight-reply feature, removed**: an earlier version let you
+select text in an assistant message and reply "in context" of that
+selection (a floating quote button, a quoted-text preview above the input,
+a `quoted_text` field threaded through the API). Removed entirely — extra
+UI surface and a second code path through `runStream()`/`streamChat()` for
+a feature that wasn't earning its complexity. The chat is a single
+continuous thread; if you need to reference something specific, saying so
+in plain text works the same way a human conversation would.
+
 ## GitHub Pages showcase build (`StaticShowcaseSection.tsx`)
 
 The same `HomePage.tsx` is reused for both the real app's homepage and the

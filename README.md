@@ -49,7 +49,7 @@ The badge under each answer always reflects what actually happened that turn (PD
 - **Latency** — wall-clock time for that response, shown as a badge
 - **Cache hits** — a "Cached" badge when an answer came from the prompt cache instead of a fresh LLM call (instant, no re-generation)
 - **Token cost calculator** — estimates what the whole conversation would have cost on GPT-4o, Claude, Gemini, etc. — useful context for why running locally is free, even though you're seeing real token numbers
-- **Model settings** — swap between local Ollama (default) and your own OpenAI/Anthropic/Gemini key, per conversation
+- **Model settings** — swap between local Ollama (pick from whatever models you've actually pulled, auto-detected) and your own OpenAI/Anthropic/Gemini key, per conversation
 - **Memory** — a sidebar panel showing everything Jignasa has remembered about you, with per-item delete and clear-all
 
 ## Why it's worth a look
@@ -62,6 +62,7 @@ Most "chat with your docs" projects are a thin wrapper around a hosted API. Jign
 - **Measured, not just claimed** — retrieval quality and answer quality are both benchmarked against real test questions, and the results are shown live on the homepage, not just asserted in this README
 - **A genuinely designed interface** — not a default template: custom type, a real motion/scroll system, and a UI built to feel as considered as the backend (see [`web/README.md`](web/README.md))
 - **Optional cloud fallback** — if you'd rather not run a local model, plug in your own OpenAI, Anthropic, or Gemini key instead. Your key only ever goes from your browser to your own backend to the provider — never logged, never saved.
+- **A real audit trail, not just chat history** — every routing decision, tool call, and guardrail block is logged with its reasoning to a queryable table (`GET /api/conversations/{id}/audit`), independent of what's shown in the chat UI. If you can't trace what an agent did, you can't debug it, secure it, or trust it — see [`docs/AGENT_ROADMAP.md`](docs/AGENT_ROADMAP.md#stage-25-observability--audit-trail--implemented)
 
 ## How it's built
 
@@ -125,7 +126,7 @@ Drop your own PDFs into `knowledge-base/` before step 4 — see [`knowledge-base
 
 ```
 Jignasa/
-├── api/             ← FastAPI backend (routing, retrieval, caching, streaming)
+├── api/             ← FastAPI backend (see api/README.md for a file-by-file map)
 ├── web/             ← React frontend (see web/README.md for the design system)
 ├── pipeline/        ← Builds the document index from PDFs (see pipeline/README.md)
 ├── rag_index/       ← Generated vector index (see rag_index/README.md)

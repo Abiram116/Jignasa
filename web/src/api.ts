@@ -66,6 +66,17 @@ export async function getKnowledgeBaseFiles(): Promise<KBFile[]> {
   return res.json()
 }
 
+export interface OllamaModel {
+  name: string
+  size_bytes: number
+}
+
+export async function getOllamaModels(): Promise<OllamaModel[]> {
+  const res = await fetch(`${API}/ollama/models`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export async function deleteKnowledgeBaseFile(filename: string): Promise<void> {
   const res = await fetch(`${API}/knowledge-base/files/${encodeURIComponent(filename)}`, {
     method: 'DELETE',
@@ -139,7 +150,6 @@ export async function streamChat(
   message: string,
   mode: ChatMode,
   onEvent: (event: ChatEvent) => void,
-  quotedText?: string | null,
   signal?: AbortSignal,
 ): Promise<void> {
   const llm = getLLMSettings()
@@ -149,7 +159,6 @@ export async function streamChat(
     body: JSON.stringify({
       message,
       mode,
-      quoted_text: quotedText ?? null,
       llm_provider: llm.provider,
       llm_api_key: llm.apiKey || null,
       llm_model: llm.model || null,

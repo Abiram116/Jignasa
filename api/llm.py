@@ -49,12 +49,18 @@ def stream_chat(
     elif provider == "gemini" and api_key:
         yield from _stream_gemini(messages, temperature, num_predict, api_key, model)
     else:
-        yield from _stream_ollama(messages, temperature, num_predict)
+        yield from _stream_ollama(messages, temperature, num_predict, model)
 
 
-def _stream_ollama(messages: list[dict], temperature: float, num_predict: int) -> Iterator[LLMChunk]:
+def _stream_ollama(messages: list[dict], temperature: float, num_predict: int, model: str | None = None) -> Iterator[LLMChunk]:
+    # `model` here is the user's chosen *final-answer* model only -- the
+    # reasoning/decision loop (api/agent.py) and memory extraction
+    # (api/memory.py) always use OLLAMA_MODEL regardless of this setting.
+    # Their tool-selection reliability was specifically calibrated against
+    # that one model (scripts/eval_tool_selection.py) and isn't validated
+    # for whatever else a user might have pulled locally.
     for chunk in ollama_chat(
-        model=OLLAMA_MODEL,
+        model=model or OLLAMA_MODEL,
         messages=messages,
         stream=True,
         think=False,

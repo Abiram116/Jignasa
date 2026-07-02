@@ -218,6 +218,26 @@ user themselves must be answered directly from the memory notes or
 conversation, never searched, since neither the web nor the user's own
 documents can know who the user is.
 
+### Local model selection (`GET /api/ollama/models`)
+
+The settings modal lets you pick which pulled Ollama model actually writes
+the final answer, instead of hardcoding `qwen3:8b`. The endpoint calls
+`ollama.list()` and returns each model's name and size, catching any
+failure (Ollama not running, empty library) down to an empty list rather
+than a 500 — the frontend falls back to "app default" text either way.
+
+**Deliberate scope: this only changes the final-answer model, never the
+reasoning loop.** `_stream_ollama()` in `api/llm.py` takes the user's chosen
+model purely for the last generation call; the ReAct decision loop
+(`api/agent.py`) and memory extraction (`api/memory.py`) always run on the
+project's calibrated `OLLAMA_MODEL` regardless of what's selected here. The
+reason is `scripts/eval_tool_selection.py`'s 10/12 baseline is specific to
+that model — letting a user swap in a smaller or differently-tuned model
+for the decision step would silently invalidate that measurement, trading
+a reliability number that's actually been checked for one that hasn't.
+Swapping the final-answer model is safe because it only affects prose
+quality, not which tools get called or what gets remembered.
+
 ### Robustness pass
 
 A `_finish_response()` helper (`api/main.py`) wraps the persist-and-respond
@@ -521,6 +541,60 @@ both fixed in the same pass rather than just documented:
   reverse proxy, configure it to strip inbound `X-Forwarded-For` and set
   its own.
 
+## Audit trail (`api/audit.py`)
+
+Stage 2.5 of [`docs/AGENT_ROADMAP.md`](AGENT_ROADMAP.md): a structured,
+queryable log of what the app actually did, separate from the ephemeral
+per-message `agent_trace` already streamed to the frontend for the live
+"thinking" UI. That trace is per-turn and disappears once you close the
+tab; the audit log is a permanent SQLite table (`audit_log`, same
+connection pattern as `api/db.py`) that persists independently of the chat
+UI.
+
+One row per event, with `session_id`, a UTC timestamp, an `event_type`
+(`decision`, `tool_call`, `data_access`, `guardrail_block`), an optional
+`tool_name`, `input_summary`/`output_summary`, and a `reasoning` field.
+Four instrumentation points, all in `api/main.py`:
+
+- **`guardrail_block`** — logged in the prompt-injection `except ValueError`
+  handler, so a denied request is queryable history, not just a log line.
+- **`decision`** (routing) — logged right after the heuristic/pinned mode is
+  resolved, capturing which path a message took and why.
+- **`tool_call` + `data_access`** — logged by iterating `agent_result.trace`
+  after the ReAct loop finishes, reusing the `reasoning` argument the tool
+  schema already requires (see "The adaptive ReAct loop" above) rather than
+  inventing a second explanation for the same decision.
+- **`decision`** (final outcome) — logged once the outcome label (rag / web
+  / hybrid / casual) is settled, independent of which button was pinned.
+
+Every call site is wrapped in try/except at the `log_event()` level, so a
+logging failure can never break the actual chat response — an audit trail
+that can crash the product it's auditing defeats its own purpose.
+
+Read via `GET /api/conversations/{session_id}/audit`, returning the full
+ordered trail. No frontend UI for it by design — this is a
+developer/debugging surface, not something the target user (someone
+chatting with their own documents) needs to see. Example output for a
+single web-search turn:
+
+```json
+[
+  {"event_type": "decision", "tool_name": null,
+   "input_summary": "mode=web", "output_summary": "routed=loop",
+   "reasoning": "not casual; web tools available"},
+  {"event_type": "tool_call", "tool_name": "web_search",
+   "input_summary": "latest stable Rust version",
+   "output_summary": null,
+   "reasoning": "Question asks for a current version number, which changes over time and isn't reliable from training data."},
+  {"event_type": "data_access", "tool_name": "web_search",
+   "input_summary": "latest stable Rust version",
+   "output_summary": "5 results", "reasoning": null},
+  {"event_type": "decision", "tool_name": null,
+   "input_summary": "outcome", "output_summary": "web",
+   "reasoning": "web_search attempted with results"}
+]
+```
+
 ## Known limitations (stated plainly, not hidden)
 
 - **DuckDuckGo search quality** is the ceiling for web mode's grounding —
@@ -539,9 +613,11 @@ both fixed in the same pass rather than just documented:
   `scripts/eval_tool_selection.py`'s benchmark — confirmed to be an 8B
   model capability ceiling (re-running the identical prompt reproduces
   different results on the same borderline cases), not a prompt-wording
-  gap. The actual next lever, not yet built, is letting the decision step
-  use a stronger model instead of always hardcoding local Ollama for it
-  regardless of whatever BYOK provider is configured for the final answer.
+  gap. The decision step intentionally always runs on the calibrated local
+  `OLLAMA_MODEL`, never on whatever BYOK provider or alternate local model
+  is configured for the final answer (see "Local model selection" above) —
+  so the actual next lever is a stronger *reasoning* model, which isn't
+  wired up on purpose, not an oversight.
 - **FAISS `IndexFlatIP`** is exact search, not approximate — correct and
   fast at this corpus size (~2000 chunks), but would need revisiting
   (HNSW/IVF, or a dedicated vector DB) well before reaching 100K+ chunks or

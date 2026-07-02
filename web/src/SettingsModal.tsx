@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getOllamaModels } from './api'
 import type { LLMProvider, LLMSettings } from './types'
 
 const PROVIDERS: { value: LLMProvider; label: string; placeholder: string }[] = [
@@ -25,6 +26,11 @@ export function SettingsModal({
   const [provider, setProvider] = useState<LLMProvider>(settings.provider)
   const [apiKey, setApiKey] = useState(settings.apiKey)
   const [model, setModel] = useState(settings.model ?? '')
+  const [ollamaModels, setOllamaModels] = useState<{ name: string; size_bytes: number }[] | null>(null)
+
+  useEffect(() => {
+    getOllamaModels().then(setOllamaModels).catch(() => setOllamaModels([]))
+  }, [])
 
   const keyMissing = provider !== 'ollama' && apiKey.trim().length === 0
 
@@ -55,14 +61,37 @@ export function SettingsModal({
 
           <div className="settings-field">
             <label>Provider</label>
-            <select value={provider} onChange={(e) => setProvider(e.target.value as LLMProvider)}>
+            <select value={provider} onChange={(e) => { setProvider(e.target.value as LLMProvider); setModel('') }}>
               {PROVIDERS.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
           </div>
 
-          {provider !== 'ollama' && (
+          {provider === 'ollama' ? (
+            <div className="settings-field">
+              <label>Model</label>
+              {ollamaModels === null ? (
+                <p className="cost-note" style={{ margin: 0 }}>Checking locally installed models…</p>
+              ) : ollamaModels.length > 0 ? (
+                <select value={model} onChange={(e) => setModel(e.target.value)}>
+                  <option value="">App default (qwen3:8b)</option>
+                  {ollamaModels.map((m) => (
+                    <option key={m.name} value={m.name}>{m.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="cost-note" style={{ margin: 0 }}>
+                  Couldn't detect any local Ollama models — using the app default.
+                </p>
+              )}
+              <p className="cost-note" style={{ margin: 0 }}>
+                This only changes which model writes the final answer. Document/web
+                search decisions always use the app's own calibrated model, regardless
+                of what you pick here.
+              </p>
+            </div>
+          ) : (
             <>
               <div className="settings-field">
                 <label>API key</label>

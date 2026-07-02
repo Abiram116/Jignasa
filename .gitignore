@@ -43,7 +43,6 @@ profile_default/
 *.swp
 *.swo
 *~
-settings.json
 
 # --- OS ---
 .DS_Store
@@ -105,9 +104,10 @@ web/pnpm-debug.log*
 # --- Temporary Test Folders ---
 test UI/
 
-# --- Agent skills (fetched content; skills-lock.json is the source of truth) ---
+# --- Agent skills (fetched content, local dev tooling only) ---
 .agents/
 .claude/
+skills-lock.json
 
 # --- Stray dev artifacts (not source, not meant to be committed) ---
 all_changes.patch

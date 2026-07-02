@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from api import db, memory, rag
+from api import audit, db, memory, rag
 from api.agent import AgentResult, AgentStep, run_agent_loop
 from api.cache import init_cache, get_cached, set_cached
 from api.config import MEMORY_MANAGE_LIMIT, TOP_K, WEB_SEARCH_RESULT_COUNT
@@ -73,7 +73,6 @@ async def _unhandled_exception_handler(request, exc: Exception):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     mode: str = Field(default="auto")
-    quoted_text: str | None = Field(default=None, max_length=1000)
     # BYOK (bring your own key): used only for this request's chat() calls,
     # never written to db.append_message, set_cached, or logs.
     llm_provider: str = Field(default="ollama")
@@ -105,6 +104,7 @@ def startup() -> None:
     db.init_db()
     init_cache()
     memory.init_memory()
+    audit.init_audit()
 
 
 @app.get("/api/status")
@@ -114,6 +114,24 @@ def get_status() -> dict:
         "eval_type": EVAL_TYPE,
         "eval_description": EVAL_DESCRIPTION,
     }
+
+
+@app.get("/api/ollama/models")
+def get_ollama_models() -> list[dict]:
+    """
+    Locally-pulled Ollama models, for the model-selector dropdown in
+    Settings. Only affects which model generates the final answer -- the
+    reasoning loop and memory extraction always use the app's calibrated
+    OLLAMA_MODEL regardless of what the user picks here (see api/llm.py).
+    Returns [] rather than an error if Ollama isn't reachable, so the
+    frontend can degrade gracefully instead of showing a broken dropdown.
+    """
+    try:
+        from ollama import list as ollama_list
+        resp = ollama_list()
+        return [{"name": m.model, "size_bytes": m.size} for m in resp.models]
+    except Exception:
+        return []
 
 
 @app.get("/api/conversations")
@@ -161,6 +179,18 @@ def get_messages(session_id: str) -> dict:
         "title": db.get_title(session_id),
         "messages": db.load_messages(session_id),
     }
+
+
+@app.get("/api/conversations/{session_id}/audit")
+def get_audit_trail(session_id: str) -> list[dict]:
+    """
+    The Stage 2.5 audit trail: every routing decision, tool call, data
+    access, and guardrail block for this conversation, in order -- what
+    Jignasa did, on what data, and why. Not surfaced in the chat UI (see
+    docs/AGENT_ROADMAP.md); inspect via this endpoint directly.
+    """
+    validate_session_id(session_id)
+    return audit.get_audit_trail(session_id)
 
 
 @app.post("/api/conversations/{session_id}/partial-assistant")
@@ -267,17 +297,18 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
     validate_session_id(session_id)
 
     body.message = sanitise_text(body.message, max_length=2000)
-    if body.quoted_text:
-        body.quoted_text = sanitise_text(body.quoted_text, max_length=1000)
 
     try:
         run_guardrails(body.message)
-        if body.quoted_text:
-            run_guardrails(body.quoted_text)
         check_prompt_injection(body.message)
-        if body.quoted_text:
-            check_prompt_injection(body.quoted_text)
     except ValueError as exc:
+        try:
+            audit.log_event(
+                session_id, "guardrail_block",
+                input_summary=body.message[:200], reasoning=str(exc),
+            )
+        except Exception:
+            logger.exception("Audit logging failed for a guardrail block")
         raise HTTPException(400, str(exc)) from exc
 
     mode_requested = body.mode.lower().strip()
@@ -287,8 +318,19 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
     if mode_requested == "auto":
         heuristic = classify_intent(body.message)
         resolved_mode = "casual" if heuristic == "casual" else "agent"
+        decision_reasoning = f"heuristic router: '{heuristic}' -> {resolved_mode}"
     else:
         resolved_mode = mode_requested
+        decision_reasoning = f"user pinned mode explicitly: {mode_requested}"
+
+    try:
+        audit.log_event(
+            session_id, "decision",
+            input_summary=body.message[:200], output_summary=resolved_mode,
+            reasoning=decision_reasoning,
+        )
+    except Exception:
+        logger.exception("Audit logging failed for a routing decision")
 
     _PIN_TOOL_SCOPE = {
         "agent":  (True, True),
@@ -310,18 +352,6 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
     _EARLY_INTENT_LABEL = {"docs": "rag", "web": "web", "hybrid": "hybrid"}
     intent = "casual" if resolved_mode == "casual" else _EARLY_INTENT_LABEL.get(resolved_mode, "casual")
 
-    def _quote_block(quoted: str | None) -> str:
-        if not quoted or not quoted.strip():
-            return ""
-        return (
-            "\n\n[USER CONTEXT: The user has highlighted and quoted the following specific "
-            "excerpt from a previous assistant message. Their question below refers to "
-            "this excerpt specifically — address it directly and precisely.]\n"
-            f"Quoted excerpt:\n\"\"\"\n{quoted.strip()}\n\"\"\"\n"
-        )
-
-    quote_ctx = _quote_block(body.quoted_text)
-
     prior_history = db.load_messages(session_id)
     # Read-before-answering memory (Stage 1): shared by the casual and agent
     # branches below. Global/cross-session, not scoped to this conversation.
@@ -336,12 +366,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         words = body.message.strip().split()[:6]
         db.set_title(session_id, " ".join(words).title() if words else "New Chat")
 
-    display_message = (
-        f"> {body.quoted_text.strip()}\n\n{body.message}"
-        if body.quoted_text and body.quoted_text.strip()
-        else body.message
-    )
-    db.append_message(session_id, "user", display_message)
+    db.append_message(session_id, "user", body.message)
 
     def event_stream() -> Iterator[str]:
         stream_start = time.monotonic()
@@ -383,7 +408,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             ollama_messages: list[dict] = [{"role": "system", "content": CASUAL_SYSTEM + memory_block}]
             for m in prior_history[-8:]:
                 ollama_messages.append({"role": m["role"], "content": m["message"]})
-            ollama_messages.append({"role": "user", "content": f"{quote_ctx}{body.message}".strip()})
+            ollama_messages.append({"role": "user", "content": body.message})
 
             answer_parts: list[str] = []
             prompt_tokens = 0
@@ -431,6 +456,22 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
                 return
 
             assert agent_result is not None  # run_agent_loop always yields exactly one AgentResult last
+
+            try:
+                for step in agent_result.trace:
+                    if step.get("stage") == "tool_call":
+                        audit.log_event(
+                            session_id, "tool_call",
+                            tool_name=step.get("tool"), input_summary=step.get("detail"),
+                            reasoning=step.get("reasoning"),
+                        )
+                    elif step.get("stage") == "observation":
+                        audit.log_event(
+                            session_id, "data_access",
+                            tool_name=step.get("tool"), output_summary=step.get("detail"),
+                        )
+            except Exception:
+                logger.exception("Audit logging failed for agent loop trace")
 
             if agent_result.sources:
                 yield _sse({"type": "sources", "sources": agent_result.sources})
@@ -483,10 +524,22 @@ Answer:"""
 
             yield _sse({"type": "intent", "mode": outcome_label})
 
+            try:
+                audit.log_event(
+                    session_id, "decision",
+                    output_summary=f"final answer via {outcome_label}",
+                    reasoning=(
+                        f"rag_attempted={rag_attempted}, web_attempted={web_attempted}, "
+                        f"sources={len(agent_result.sources)}, web_sources={len(agent_result.web_sources)}"
+                    ),
+                )
+            except Exception:
+                logger.exception("Audit logging failed for outcome decision")
+
             ollama_messages_final: list[dict] = [{"role": "system", "content": final_system}]
             for m in prior_history[-6:]:
                 ollama_messages_final.append({"role": m["role"], "content": m["message"]})
-            ollama_messages_final.append({"role": "user", "content": f"{quote_ctx}{final_user_prompt}".strip()})
+            ollama_messages_final.append({"role": "user", "content": final_user_prompt.strip()})
 
             answer_parts = []
             prompt_tokens = 0
