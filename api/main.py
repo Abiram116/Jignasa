@@ -526,9 +526,9 @@ def post_chat(session_id: str, body: ChatRequest, request: Request) -> Streaming
                     if chunk.done:
                         prompt_tokens = chunk.prompt_tokens
                         completion_tokens = chunk.completion_tokens
-            except Exception:
+            except Exception as exc:
                 logger.exception("LLM call failed in casual mode")
-                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
+                yield _sse({"type": "error", "message": _llm_error_message(exc, body.llm_provider)})
                 return
 
             answer = "".join(answer_parts).strip()
@@ -657,9 +657,9 @@ Answer:"""
                     if chunk.done:
                         prompt_tokens = chunk.prompt_tokens
                         completion_tokens = chunk.completion_tokens
-            except Exception:
+            except Exception as exc:
                 logger.exception("LLM call failed in unified tool-calling branch")
-                yield _sse({"type": "error", "message": "Something went wrong generating a response. Please try again."})
+                yield _sse({"type": "error", "message": _llm_error_message(exc, body.llm_provider)})
                 return
 
             answer = "".join(answer_parts).strip()
@@ -751,6 +751,24 @@ def save_evaluation(body: SaveEvalRequest) -> dict:
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def _llm_error_message(exc: Exception, provider: str) -> str:
+    """
+    A generic "something went wrong" swallowed the single most common
+    real-world failure: Ollama not reachable at all -- wrong OLLAMA_HOST,
+    Ollama not running, or (the WSL-specific case) Ollama installed on the
+    Windows host while the app runs inside WSL2, where 127.0.0.1 doesn't
+    cross that boundary. The ollama python client already respects
+    OLLAMA_HOST natively with zero code changes needed here -- this only
+    makes the failure legible instead of a generic dead end.
+    """
+    if provider == "ollama" and re.search(r"connect|refused|timed? ?out|11434", str(exc), re.IGNORECASE):
+        return (
+            "Can't reach Ollama. Make sure it's running, or if you're using WSL with "
+            "Ollama on Windows, set the OLLAMA_HOST environment variable -- see README.md."
+        )
+    return "Something went wrong generating a response. Please try again."
 
 
 # ── Persistent memory management ────────────────────────────────────────

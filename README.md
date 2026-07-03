@@ -8,7 +8,7 @@ Jignasa is a complete RAG system built from first principles: a structure-aware 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688)](api/)
 [![React 19](https://img.shields.io/badge/frontend-React%2019-61DAFB)](web/)
-[![Ollama](https://img.shields.io/badge/LLM-Ollama%20%7C%20qwen3%3A8b-black)](https://ollama.com)
+[![Ollama](https://img.shields.io/badge/LLM-Ollama-black)](https://ollama.com)
 [![FAISS](https://img.shields.io/badge/vector%20store-FAISS-009999)](rag_index/)
 [![Docker ready](https://img.shields.io/badge/docker-self--host%20ready-2496ED)](docs/DEPLOYMENT.md)
 [![BYOK supported](https://img.shields.io/badge/BYOK-OpenAI%20%7C%20Anthropic%20%7C%20Gemini-orange)](docs/TECHNICAL.md)
@@ -187,6 +187,26 @@ Any of these break if you move the project folder afterward, the same way
 any desktop shortcut to any app breaks if you move that app — just
 re-point it (or re-edit the path, for the Linux one) if that happens.
 
+**WSL users specifically: where should Ollama actually run?** WSL2 has its
+own network namespace separate from Windows, so if Ollama is installed on
+the **Windows side** while Jignasa runs **inside WSL**, `127.0.0.1:11434`
+inside WSL does not reach it — you'll see "Can't reach Ollama" errors.
+Two ways to fix it:
+
+- **Simplest: install Ollama inside WSL itself** (`curl -fsSL
+  https://ollama.com/install.sh | sh`, run inside your WSL terminal, same
+  as any other Linux install). Then everything is on the same side of the
+  boundary and `127.0.0.1` just works, no configuration needed.
+- **Or, if you want to keep using Ollama on Windows** (e.g. the Windows
+  GUI app, shared with other non-WSL projects): point Jignasa at the
+  Windows host's IP instead, from inside your WSL terminal:
+  ```bash
+  export OLLAMA_HOST="http://$(ip route show default | awk '{print $3}'):11434"
+  ./run_all.sh
+  ```
+  This works with no code changes — the `ollama` Python package already
+  reads `OLLAMA_HOST` from the environment natively.
+
 A note on the commands above: every Python command is prefixed with
 `uv run` — that's what tells it to use the dependencies from Step 2
 instead of your system Python. If you ever run one without it, you'll get
@@ -254,6 +274,13 @@ Real usage turned up a batch of genuine bugs, not cosmetic nitpicks. Fixed:
   constant and animating the sidebar's own width instead.
 - **Deleting a conversation had no confirmation** — one misclick, gone.
   Now uses the same click-to-arm confirm pattern as Quit/Clear-memories.
+- **No guidance for WSL users whose Ollama runs on the Windows side** — a
+  real networking boundary (WSL2's separate network namespace), not a bug,
+  but it produced a confusing generic error with no explanation. Errors
+  now specifically say "Can't reach Ollama" with a pointer to the fix, and
+  the README documents both options (run Ollama inside WSL, or set
+  `OLLAMA_HOST`, which needed zero code changes since the `ollama` client
+  already reads it natively).
 
 Known, deliberately not changed: Auto mode's decision prompt still
 proactively searches documents for concept questions even when the
