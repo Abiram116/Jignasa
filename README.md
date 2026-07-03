@@ -237,6 +237,25 @@ without touching the terminal again. See
 
 ## Changelog
 
+### 2026-07-03 — Quit reliability + Ollama auto-detection follow-up
+
+- **Quit Jignasa could falsely report "Couldn't confirm the backend shut
+  down"** even when it actually worked. The post-shutdown check went
+  through Vite's dev proxy, which returns a real (non-throwing) HTTP 502
+  when the backend is dead but Vite is still alive for a moment longer —
+  the old check only trusted a thrown `fetch()` as "it's down" and read
+  that 502 as "still running." Now polls the backend directly, bypassing
+  the proxy, and checks the response status instead of ignoring it.
+- **Ollama host is now auto-detected, WSL included.** At startup,
+  `api/ollama_discovery.py` probes `127.0.0.1:11434`; if that fails and
+  it detects it's running inside WSL2, it automatically tries the Windows
+  host's gateway IP instead — no more manually exporting `OLLAMA_HOST` for
+  that specific setup. An explicit `OLLAMA_HOST` you've already set is
+  always respected, never overridden. `/api/status` now reports
+  reachability, and the sidebar shows a clear "Can't reach Ollama at
+  {host}" message instead of a generic error surfacing only after you send
+  a message.
+
 ### 2026-07-03 — Reliability & correctness pass
 
 Real usage turned up a batch of genuine bugs, not cosmetic nitpicks. Fixed:

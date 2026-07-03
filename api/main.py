@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from api import audit, db, memory, rag
+from api import audit, db, memory, ollama_discovery, rag
 from api.agent import AgentResult, AgentStep, run_agent_loop
 from api.cache import init_cache, get_cached, set_cached
 from api.config import MEMORY_MANAGE_LIMIT, TOP_K, WEB_SEARCH_RESULT_COUNT
@@ -113,6 +113,11 @@ def startup() -> None:
     init_cache()
     memory.init_memory()
     audit.init_audit()
+    # Must run before any request handler makes its first Ollama call --
+    # sets OLLAMA_HOST in-process for the WSL-Ollama-on-Windows case, which
+    # every ollama.chat()/ollama.list() call in this codebase already reads
+    # natively with zero further code changes.
+    ollama_discovery.detect_ollama_host()
 
 
 @app.get("/api/status")
@@ -121,6 +126,7 @@ def get_status() -> dict:
         **rag.index_status(),
         "eval_type": EVAL_TYPE,
         "eval_description": EVAL_DESCRIPTION,
+        "ollama": ollama_discovery.get_ollama_status(),
     }
 
 

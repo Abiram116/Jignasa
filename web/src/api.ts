@@ -16,16 +16,27 @@ export async function shutdownApp(): Promise<boolean> {
     // Expected on success: the server may drop the connection before
     // replying. Fall through to actually verifying it's gone.
   }
-  for (let i = 0; i < 4; i++) {
+  // Poll the backend DIRECTLY, bypassing Vite's dev proxy: through the
+  // proxy, a dead backend with a still-alive Vite process returns a real
+  // HTTP 502 (fetch() does not throw on that -- same gotcha documented on
+  // friendlyError() below), which the old version of this loop read as
+  // "still running" and reported a false failure. A direct fetch to a dead
+  // port always throws, so this is deterministic regardless of proxy
+  // timing. CORS already allows any localhost port (see _CORS_ORIGIN_REGEX
+  // in api/main.py), so this direct cross-port fetch isn't blocked.
+  // 6 attempts at 750ms comfortably covers _terminate_self()'s 3s SIGKILL
+  // escalation in api/main.py.
+  for (let i = 0; i < 6; i++) {
     await new Promise((r) => setTimeout(r, 750))
     try {
-      await fetch(`${API}/status`, { signal: AbortSignal.timeout(1000) })
+      const res = await fetch('http://127.0.0.1:8000/api/status', { signal: AbortSignal.timeout(1000) })
+      if (!res.ok) return true // e.g. a stray 502/503 from something else on the port -- treat as down
       // Still answering -- not down yet, keep waiting.
     } catch {
       return true // confirmed unreachable
     }
   }
-  return false // still responding after ~3s -- shutdown likely didn't work
+  return false // still responding after ~4.5s -- shutdown likely didn't work
 }
 
 // A dead/unreachable backend (terminal closed, process crashed, port

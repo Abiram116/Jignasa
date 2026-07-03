@@ -918,11 +918,19 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     // nothing rather than guess when they're on the unconfigured default.
     const modelLabel = llmSettings.provider === 'ollama' ? llmSettings.model : (llmSettings.model || llmSettings.provider)
     return (
-      <div className={`status-pill ${status.ready ? 'ok' : 'warn'}`}>
-        <div className="status-dot" />
-        <span>{status.ready ? 'Ready' : 'Index missing'}</span>
-        {modelLabel && <span className="status-detail">{modelLabel}</span>}
-      </div>
+      <>
+        <div className={`status-pill ${status.ready ? 'ok' : 'warn'}`}>
+          <div className="status-dot" />
+          <span>{status.ready ? 'Ready' : 'Index missing'}</span>
+          {modelLabel && <span className="status-detail">{modelLabel}</span>}
+        </div>
+        {status.ollama && !status.ollama.reachable && (
+          <p className="cost-note" style={{ color: 'var(--coral-400)', margin: '0.4rem 0 0' }}>
+            Can't reach Ollama at {status.ollama.host} — is it running?{' '}
+            WSL users: see README.md.
+          </p>
+        )}
+      </>
     )
   }
 

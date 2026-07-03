@@ -16,6 +16,7 @@ export interface Status {
   top_k: number
   eval_type: string
   eval_description: string
+  ollama: { host: string; reachable: boolean; via: string }
 }
 
 export interface Conversation {
