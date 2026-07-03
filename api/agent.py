@@ -125,6 +125,7 @@ def run_agent_loop(
     *,
     allow_rag: bool,
     allow_web: bool,
+    force_tools: frozenset[str] = frozenset(),
 ) -> Iterator[AgentStep | AgentResult]:
     """
     Generator. Yields AgentStep instances as they happen (for live SSE), and
@@ -132,6 +133,17 @@ def run_agent_loop(
     the two with isinstance -- a "last item is a different type" sentinel,
     since this is a sequential loop with exactly one final payload, not a
     uniform stream of one type.
+
+    force_tools: run these tools unconditionally before the adaptive
+    decision loop even starts, instead of leaving it up to the model.
+    Only api/main.py's explicitly-pinned modes (Knowledge/Web/Hybrid) set
+    this -- pinning a mode is a user promise ("I want this tool used"), and
+    an 8B model quietly deciding not to bother was exactly what made
+    Knowledge mode intermittently answer as plain chat with no sources.
+    Auto mode passes an empty set here and keeps its existing eval-tested
+    adaptive behavior (see scripts/eval_tool_selection.py) completely
+    unchanged -- this only removes the guesswork from the cases where the
+    user already told us which tool to use.
     """
     import time
 
@@ -140,6 +152,28 @@ def run_agent_loop(
     from api.rag import search_with_transform
     from api.websearch import web_search as _web_search
 
+    def _run_tool(tool_name: str, query: str, reasoning: str) -> Iterator[AgentStep]:
+        step_start = time.monotonic()
+        yield AgentStep(stage="tool_call", tool=tool_name, reasoning=reasoning, detail=query, elapsed_ms=0)
+        obs_start = time.monotonic()
+        if tool_name == "rag_search":
+            try:
+                hits, _transformed = search_with_transform(query)
+            except FileNotFoundError:
+                hits = []
+            result.sources.extend(hits)
+            obs_detail = f"{len(hits)} document chunk(s) found" if hits else "No relevant document chunks found"
+        else:
+            hits = _web_search(query, n=WEB_SEARCH_RESULT_COUNT)
+            result.web_sources.extend(hits)
+            obs_detail = f"{len(hits)} web result(s) found" if hits else "No web results found"
+        elapsed_obs = int((time.monotonic() - obs_start) * 1000)
+        yield AgentStep(stage="observation", tool=tool_name, detail=obs_detail, elapsed_ms=elapsed_obs)
+        result.trace.append({"stage": "tool_call", "tool": tool_name, "reasoning": reasoning, "detail": query})
+        result.trace.append({"stage": "observation", "tool": tool_name, "detail": obs_detail})
+        result.iterations_used += 1
+        seen_calls.add((tool_name, query.lower()))
+
     allowed_names = set()
     if allow_rag:
         allowed_names.add("rag_search")
@@ -147,11 +181,17 @@ def run_agent_loop(
         allowed_names.add("web_search")
     tools = [t for t in _TOOLS if t["function"]["name"] in allowed_names]
 
+    result = AgentResult()
+    seen_calls: set[tuple[str, str]] = set()
+
+    for forced in ("rag_search", "web_search"):
+        if forced in force_tools and forced in allowed_names:
+            yield from _run_tool(forced, message, "Pinned mode: this tool is used every turn, not left to the model's discretion.")
+
     if not tools:
         yield AgentStep(stage="answering")
-        result = AgentResult()
         result.trace.append({"stage": "answering"})
-        result.observations_text = _fold_observations([], [])
+        result.observations_text = _fold_observations(result.sources, result.web_sources)
         yield result
         return
 
@@ -200,9 +240,6 @@ def run_agent_loop(
     for m in history[-6:]:
         decision_messages.append({"role": m["role"], "content": m["message"]})
     decision_messages.append({"role": "user", "content": message})
-
-    result = AgentResult()
-    seen_calls: set[tuple[str, str]] = set()
 
     for _ in range(MAX_REACT_ITERATIONS):
         step_start = time.monotonic()

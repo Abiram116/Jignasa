@@ -19,7 +19,18 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static, framework-free fallback: React replaces this the moment it
+         mounts (App.tsx's PreLoader takes over from there). Without this, a
+         slow-to-load JS bundle or a JS error shows a truly blank white page
+         with zero indication anything is happening -- this makes sure
+         there's always *something* on screen from the first paint. -->
+    <div id="root">
+      <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;background:#07090f;color:#8b93a8;font-family:Inter,system-ui,sans-serif;font-size:0.9rem;letter-spacing:0.02em;">
+        <div style="width:32px;height:32px;border-radius:50%;border:2px solid #262d3f;border-top-color:#6366f1;animation:jignasa-spin 0.8s linear infinite;"></div>
+        <span>Starting Jignasa…</span>
+      </div>
+    </div>
+    <style>@keyframes jignasa-spin { to { transform: rotate(360deg); } }</style>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

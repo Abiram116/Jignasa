@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import signal
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -34,7 +35,9 @@ from api.llm import stream_chat
 from api.rag import build_prompt, search_with_transform
 from api.security import (
     SecurityHeadersMiddleware,
+    _limiter,
     check_prompt_injection,
+    get_client_ip,
     neutralise_injection,
     sanitise_text,
     validate_session_id,
@@ -145,13 +148,35 @@ def _terminate_self() -> None:
     before the process disappears from under it.
 
     Signals the whole process GROUP, not just this PID: uvicorn --reload
-    (used by run_all.sh) runs as a supervisor process plus a separate
-    worker subprocess, and killing only the worker risks the supervisor
-    auto-respawning it, silently undoing the shutdown. Targeting the
-    process group is exactly what happens when you Ctrl+C in a terminal --
-    it reaches both at once, whether or not --reload is in play.
+    (used by run_all.sh/run_all.bat) runs as a supervisor process plus a
+    separate worker subprocess, and killing only the worker risks the
+    supervisor auto-respawning it, silently undoing the shutdown. Targeting
+    the process group is exactly what happens when you Ctrl+C in a
+    terminal -- it reaches both at once, whether or not --reload is in play.
+
+    os.killpg doesn't exist on Windows at all (AttributeError, not a no-op)
+    -- caught below and falls back to os._exit() on just this process. Not
+    verified against a real Windows machine (this dev environment is
+    Linux-only); if the --reload supervisor's console window lingers after
+    Quit on native Windows, closing that window manually is the fallback,
+    same as the already-documented run_all.bat limitation.
     """
-    os.killpg(os.getpgid(0), signal.SIGTERM)
+    try:
+        os.killpg(os.getpgid(0), signal.SIGTERM)
+    except AttributeError:
+        os._exit(0)
+        return
+    # Graceful SIGTERM can hang if uvicorn is waiting on an open keep-alive
+    # or SSE connection (the Vite dev proxy holds one open more or less
+    # permanently). Escalate to SIGKILL after a few seconds rather than
+    # leaving the process group as a zombie the user thinks they already quit.
+    def _escalate() -> None:
+        try:
+            os.killpg(os.getpgid(0), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass  # already gone -- the graceful shutdown worked in time
+
+    threading.Timer(3.0, _escalate).start()
 
 
 @app.post("/api/shutdown")
@@ -335,8 +360,13 @@ FORMATTING RULES:
 
 
 @app.post("/api/conversations/{session_id}/chat")
-def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
+def post_chat(session_id: str, body: ChatRequest, request: Request) -> StreamingResponse:
     validate_session_id(session_id)
+
+    # Was defined in api/security.py but never actually applied anywhere --
+    # the rate-limiting claim wasn't true at runtime until this line.
+    if not _limiter.is_allowed(get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests -- please slow down and try again in a minute.")
 
     body.message = sanitise_text(body.message, max_length=2000)
 
@@ -380,21 +410,44 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
         "docs":   (True, False),
         "web":    (False, True),
     }
+    # Explicitly-pinned modes are a user promise ("use this tool"), not a
+    # suggestion -- forced below so the model can't quietly skip it and
+    # answer as plain chat with no sources. Auto mode ("agent") deliberately
+    # forces nothing, keeping its existing eval-tested adaptive behavior
+    # (scripts/eval_tool_selection.py) unchanged.
+    _FORCE_TOOLS = {
+        "docs":   frozenset({"rag_search"}),
+        "web":    frozenset({"web_search"}),
+        "hybrid": frozenset({"rag_search", "web_search"}),
+    }
 
     if resolved_mode in _PIN_TOOL_SCOPE:
         pin_allow_rag, pin_allow_web = _PIN_TOOL_SCOPE[resolved_mode]
+        no_index_error = False
         if pin_allow_rag and not rag.index_ready():
             pin_allow_rag = False
             if resolved_mode == "docs":
-                resolved_mode = "casual"
+                # Explicit error, not a silent downgrade to plain chat -- the
+                # user pinned Knowledge mode specifically to search documents;
+                # answering as if they hadn't asked for that is worse than
+                # telling them why it can't happen yet.
+                no_index_error = True
         allow_rag, allow_web = pin_allow_rag, pin_allow_web
     else:
-        allow_rag = allow_web = False 
+        allow_rag = allow_web = False
+        no_index_error = False
+    force_tools = _FORCE_TOOLS.get(resolved_mode, frozenset())
 
     _EARLY_INTENT_LABEL = {"docs": "rag", "web": "web", "hybrid": "hybrid"}
     intent = "casual" if resolved_mode == "casual" else _EARLY_INTENT_LABEL.get(resolved_mode, "casual")
 
     prior_history = db.load_messages(session_id)
+    # Folded into the cache key below -- without this, a context-dependent
+    # follow-up like "explain more" hashes identically across two totally
+    # different conversations and one gets back the other's cached answer.
+    # A brand-new conversation's first message still has an empty
+    # fingerprint, so repeated fresh questions across chats still cache-hit.
+    cache_context = " | ".join(m["message"] for m in prior_history[-2:])
     # Read-before-answering memory (Stage 1): shared by the casual and agent
     # branches below. Global/cross-session, not scoped to this conversation.
     memory_block = memory.format_memory_block(memory.list_memories())
@@ -415,9 +468,16 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
 
         yield _sse({"type": "intent", "mode": intent})
 
+        if no_index_error:
+            yield _sse({
+                "type": "error",
+                "message": "No documents are indexed yet — add a PDF first (sidebar → Add document), or switch to Chat/Web mode.",
+            })
+            return
+
         # ── Cache check ─────────────────────────────────────────────
         if resolved_mode != "casual":
-            cached = get_cached(body.message, resolved_mode)
+            cached = get_cached(body.message, resolved_mode, cache_context)
             if cached is not None:
                 latency_ms = int((time.monotonic() - stream_start) * 1000)
                 yield _sse({"type": "cached", "is_cached": True})
@@ -486,7 +546,7 @@ def post_chat(session_id: str, body: ChatRequest) -> StreamingResponse:
             try:
                 for item in run_agent_loop(
                     body.message, prior_history, memory_block,
-                    allow_rag=allow_rag, allow_web=allow_web,
+                    allow_rag=allow_rag, allow_web=allow_web, force_tools=force_tools,
                 ):
                     if isinstance(item, AgentStep):
                         yield _sse(item.to_dict())
@@ -606,10 +666,17 @@ Answer:"""
             if agent_result.web_sources:
                 answer = _linkify_web_citations(answer, agent_result.web_sources)
             latency_ms = int((time.monotonic() - stream_start) * 1000)
-            set_cached(
-                body.message, resolved_mode, outcome_label, answer,
-                agent_result.sources, agent_result.web_sources, prompt_tokens, completion_tokens,
-            )
+            # Skip caching a zero-source "I don't have enough information"
+            # answer -- caching it would mean the NEXT differently-worded
+            # question that happens to hash near-identically (same
+            # normalized text) gets served the same unhelpful non-answer
+            # instead of a fresh attempt.
+            if agent_result.sources or agent_result.web_sources:
+                set_cached(
+                    body.message, resolved_mode, outcome_label, answer,
+                    agent_result.sources, agent_result.web_sources, prompt_tokens, completion_tokens,
+                    cache_context,
+                )
             memory_holder["session_id"] = session_id
             memory_holder["user_message"] = body.message
             memory_holder["assistant_answer"] = answer
@@ -721,7 +788,9 @@ def delete_knowledge_base_file_route(filename: str) -> dict:
 
 
 @app.post("/api/knowledge-base/upload")
-async def upload_knowledge_base_file(file: UploadFile = File(...)) -> StreamingResponse:
+async def upload_knowledge_base_file(request: Request, file: UploadFile = File(...)) -> StreamingResponse:
+    if not _limiter.is_allowed(get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests -- please slow down and try again in a minute.")
     pdf_path = save_uploaded_pdf(file)
 
     def event_stream() -> Iterator[str]:

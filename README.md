@@ -215,6 +215,53 @@ without touching the terminal again. See
 
 **Prefer Docker?** One `docker compose up` runs the whole stack — backend, frontend, and Ollama — with no Python/Node toolchain needed on your machine. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
+## Changelog
+
+### 2026-07-03 — Reliability & correctness pass
+
+Real usage turned up a batch of genuine bugs, not cosmetic nitpicks. Fixed:
+
+- **Knowledge/Web/Hybrid modes could silently answer as plain chat with no
+  sources.** Pinning a mode only *permitted* its tool — the model could
+  still decide not to call it. Pinned modes now call their tool
+  deterministically every turn; only Auto mode still adaptively decides
+  (`api/agent.py`'s `force_tools`).
+- **Cache key collision across unrelated conversations.** The prompt cache
+  was keyed on message text + mode only, globally — a context-dependent
+  follow-up like "explain more" in one conversation could return a
+  different conversation's cached answer. Now folds in a short fingerprint
+  of recent history, and zero-source answers are never cached at all
+  (`api/cache.py`).
+- **"Quit Jignasa" wasn't fully reliable.** Added a Windows fallback
+  (`os.killpg` doesn't exist there), a SIGKILL escalation if graceful
+  shutdown hangs on an open connection, and the frontend now actually
+  verifies the backend went down instead of assuming success.
+- **First launch could show a blank white screen.** `run_all.sh`/`run_all.bat`
+  now install missing frontend dependencies automatically and wait for the
+  backend to actually be ready before opening the browser, instead of a
+  blind timer. Added a static HTML loading splash as a last-resort fallback.
+- **Installed PWA required deleting and reinstalling to get updates.** Added
+  `skipWaiting`/`clientsClaim` so a new version now takes over automatically.
+- **The rate limiter was defined but never actually applied** to any route
+  — now enforced on chat and document upload (429 after 30 requests/minute
+  per IP).
+- **Wrong model name shown in the UI.** The chat page showed a hardcoded
+  backend value that didn't reflect BYOK or an alternate local model
+  selection; now derived from your actual active setting.
+- **Sidebar had no closing animation.** A CSS Grid track change
+  (`264px 1fr → 1fr`) isn't something a browser can animate between, so
+  the exit animation played invisibly. Fixed by keeping the grid shape
+  constant and animating the sidebar's own width instead.
+- **Deleting a conversation had no confirmation** — one misclick, gone.
+  Now uses the same click-to-arm confirm pattern as Quit/Clear-memories.
+
+Known, deliberately not changed: Auto mode's decision prompt still
+proactively searches documents for concept questions even when the
+knowledge base might not cover them — this is a calibrated, eval-tested
+behavior (`scripts/eval_tool_selection.py`), and the "worse answers" reports
+that prompted this pass are more plausibly explained by the cache bug above.
+Not touching it without re-running the eval to confirm a change actually helps.
+
 ## Project layout
 
 ```

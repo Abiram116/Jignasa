@@ -4,15 +4,28 @@ const API = '/api'
 
 // Deliberate, explicit action only -- never wired to a browser unload/close
 // event, since a refresh fires the same event and would otherwise kill the
-// whole app. The backend terminates itself right after responding, so the
-// connection dropping (rather than a clean JSON reply) is the expected,
-// successful outcome here -- not an error to surface.
-export async function shutdownApp(): Promise<void> {
+// whole app. Returns whether the backend actually went down, instead of
+// just assuming the request succeeded -- a request that never reaches the
+// server (already dead, wrong port) looks identical to a successful
+// shutdown from inside a bare try/catch, which would tell the user
+// "shut down" when nothing happened.
+export async function shutdownApp(): Promise<boolean> {
   try {
     await fetch(`${API}/shutdown`, { method: 'POST' })
   } catch {
-    // Expected: the server may drop the connection before replying.
+    // Expected on success: the server may drop the connection before
+    // replying. Fall through to actually verifying it's gone.
   }
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 750))
+    try {
+      await fetch(`${API}/status`, { signal: AbortSignal.timeout(1000) })
+      // Still answering -- not down yet, keep waiting.
+    } catch {
+      return true // confirmed unreachable
+    }
+  }
+  return false // still responding after ~3s -- shutdown likely didn't work
 }
 
 // A dead/unreachable backend (terminal closed, process crashed, port

@@ -33,6 +33,18 @@ export default defineConfig({
         // be able to serve a stale chat response or an old bundle silently.
         workbox: {
           navigateFallbackDenylist: [/^\/api/],
+          // Without these, a new service worker installs but sits in
+          // "waiting" until every window/tab is FULLY closed -- an
+          // installed PWA window that's rarely closed outright (just
+          // minimized, or left running) then keeps serving the old
+          // precached bundle indefinitely after a new release, and
+          // reinstalling looked like the only fix. skipWaiting +
+          // clientsClaim make a new version take over immediately instead
+          // of waiting for a closure that may never happen; cleanupOutdatedCaches
+          // removes the old bundle's cache entries once it's superseded.
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
         },
         manifest: {
           name: 'Jignasa',

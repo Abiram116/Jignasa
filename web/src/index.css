@@ -247,18 +247,19 @@ img, svg { display: block; }
 
 .app {
   display: grid;
-  grid-template-columns: 264px 1fr;
+  /* `auto` (not a hardcoded 264px) so the track always sizes to whatever
+     width .sidebar itself currently reports -- an empty/unmounted first
+     child collapses that column to 0 on its own. Always 2 tokens whether
+     the sidebar is open, closed, or mid-animation: unlike the previous
+     "264px 1fr" -> "1fr" swap (a token-count change CSS can't interpolate,
+     so it snapped instantly with no exit animation ever visible), this
+     never changes shape, so it can't have that problem again. The actual
+     open/close motion now comes from animating .sidebar's own width in
+     ChatInterface.tsx, which this track just follows. */
+  grid-template-columns: auto 1fr;
   height: 100vh;
   overflow: hidden;
   position: relative;
-  transition: grid-template-columns 0.2s ease;
-}
-
-/* When the sidebar unmounts, the grid must collapse to one track --
-   otherwise the lone remaining child (.main) auto-places into the first
-   264px track instead of filling the freed width. */
-.app.sidebar-closed {
-  grid-template-columns: 1fr;
 }
 
 /* ════════════════════════════════════════════════════════════════════

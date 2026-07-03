@@ -47,7 +47,7 @@ export function SettingsModal({
   // tied to closing the tab/window: that event also fires on a page
   // refresh, which would otherwise kill the whole app on an accidental F5.
   const [quitArmed, setQuitArmed] = useState(false)
-  const [quitting, setQuitting] = useState(false)
+  const [quitState, setQuitState] = useState<'idle' | 'quitting' | 'done' | 'failed'>('idle')
   const quitTimeoutRef = useRef<number | null>(null)
   useEffect(() => () => { if (quitTimeoutRef.current) window.clearTimeout(quitTimeoutRef.current) }, [])
 
@@ -58,18 +58,36 @@ export function SettingsModal({
       return
     }
     if (quitTimeoutRef.current) window.clearTimeout(quitTimeoutRef.current)
-    setQuitting(true)
-    await shutdownApp()
+    setQuitState('quitting')
+    const stopped = await shutdownApp()
+    setQuitState(stopped ? 'done' : 'failed')
   }
 
-  if (quitting) {
+  if (quitState !== 'idle') {
     return (
       <div className="modal-overlay">
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-body" style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-            <p className="cost-summary">
-              Jignasa has been shut down. It's safe to close this tab or window now.
-            </p>
+            {quitState === 'quitting' && (
+              <p className="cost-summary">Shutting down…</p>
+            )}
+            {quitState === 'done' && (
+              <p className="cost-summary">
+                Jignasa has been shut down. It's safe to close this tab or window now.
+              </p>
+            )}
+            {quitState === 'failed' && (
+              <>
+                <p className="cost-summary">
+                  Couldn't confirm the backend shut down — it may still be
+                  running.
+                </p>
+                <p className="cost-note" style={{ marginTop: '0.5rem' }}>
+                  Close the terminal window running Jignasa instead, or press
+                  Ctrl+C in it.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

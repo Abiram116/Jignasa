@@ -624,7 +624,22 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
     setTitle('New Chat')
   }
 
+  // Click-to-arm confirm, same pattern used for Quit/Clear-all memories --
+  // one accidental click used to permanently delete a conversation with no
+  // way back.
+  const [deleteArmedId, setDeleteArmedId] = useState<string | null>(null)
+  const deleteArmTimeoutRef = useRef<number | null>(null)
+  useEffect(() => () => { if (deleteArmTimeoutRef.current) window.clearTimeout(deleteArmTimeoutRef.current) }, [])
+
   const handleDelete = async (id: string) => {
+    if (deleteArmedId !== id) {
+      setDeleteArmedId(id)
+      if (deleteArmTimeoutRef.current) window.clearTimeout(deleteArmTimeoutRef.current)
+      deleteArmTimeoutRef.current = window.setTimeout(() => setDeleteArmedId(null), 4000)
+      return
+    }
+    if (deleteArmTimeoutRef.current) window.clearTimeout(deleteArmTimeoutRef.current)
+    setDeleteArmedId(null)
     await deleteConversation(id)
     const list = await fetchConversations()
     setConversations(list)
@@ -894,11 +909,19 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
       </div>
     )
     if (!status) return null
+    // status.llm_model is the backend's calibrated reasoning-loop model,
+    // which is NOT necessarily what's answering -- it stays fixed
+    // regardless of what the user picks here (see api/llm.py). Showing it
+    // as if it were "the active model" was actively misleading whenever
+    // someone picked a different Ollama model or a BYOK provider. Derive
+    // the label from the user's own actual selection instead, and show
+    // nothing rather than guess when they're on the unconfigured default.
+    const modelLabel = llmSettings.provider === 'ollama' ? llmSettings.model : (llmSettings.model || llmSettings.provider)
     return (
       <div className={`status-pill ${status.ready ? 'ok' : 'warn'}`}>
         <div className="status-dot" />
         <span>{status.ready ? 'Ready' : 'Index missing'}</span>
-        <span className="status-detail">{status.llm_model}</span>
+        {modelLabel && <span className="status-detail">{modelLabel}</span>}
       </div>
     )
   }
@@ -913,10 +936,11 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
           {sidebarOpen && (
             <motion.aside
               className="sidebar"
-              initial={{ x: -300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -300, opacity: 0 }}
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              style={{ overflow: 'hidden' }}
             >
               <div className="sidebar-header">
                 <div className="brand" onClick={onBack} title="Back to home">
@@ -1048,9 +1072,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                             </button>
                           )}
                           <button
-                            className="conv-action-btn danger"
+                            className={`conv-action-btn danger${deleteArmedId === c.session_id ? ' confirm-armed' : ''}`}
                             onClick={() => handleDelete(c.session_id)}
-                            title="Delete"
+                            title={deleteArmedId === c.session_id ? 'Click again to confirm delete' : 'Delete'}
                           >
                             <Ic.Trash />
                           </button>
@@ -1190,9 +1214,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                       </>
                     )}
                   </div>
-                  {status && (
-                    <span className="chat-meta">{status.llm_model}</span>
-                  )}
                 </div>
 
                 {messagesLoading ? (

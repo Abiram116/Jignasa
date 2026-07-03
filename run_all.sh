@@ -24,6 +24,16 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
+# First-run frontend deps: without this check, a fresh clone's `npm run dev`
+# fails instantly with nothing installed, and the browser opens a few
+# seconds later to a plain white screen with no indication why.
+if [ ! -d "$DIR/web/node_modules" ]; then
+    echo "First run: installing frontend dependencies (one-time, ~1-2 min)..."
+    (cd "$DIR/web" && npm install) || { echo "Error: npm install failed."; exit 1; }
+fi
+echo "Checking Python dependencies (uv sync -- first run can take several minutes for ML packages)..."
+(cd "$DIR" && uv sync) || { echo "Error: uv sync failed."; exit 1; }
+
 # Pure-bash TCP port check (no lsof/nc dependency) -- opens then immediately
 # closes a connection; success means something is already listening there.
 port_in_use() {
@@ -67,7 +77,14 @@ FRONTEND_PID=$!
 # already at doesn't want a new browser tab popping open on every restart.
 if [ "$JIGNASA_OPEN_BROWSER" = "1" ]; then
     (
-        sleep 3
+        # Poll instead of a blind `sleep 3`: first-run backend startup
+        # (loading the embedding model, etc.) can take well over 3 seconds,
+        # and opening the browser before it's ready is exactly what produces
+        # a white screen with no explanation. Waits up to 60s.
+        for _ in $(seq 1 60); do
+            if port_in_use 8000; then break; fi
+            sleep 1
+        done
         if command -v open &> /dev/null; then
             open "http://localhost:$FRONTEND_PORT"        # macOS
         elif command -v xdg-open &> /dev/null; then

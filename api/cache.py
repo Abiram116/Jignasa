@@ -24,10 +24,21 @@ def _conn():
     return conn
 
 
-def _key(query: str, mode: str) -> str:
+def _key(query: str, mode: str, context: str = "") -> str:
+    """
+    context: a short fingerprint of recent conversation history (see
+    api/main.py's _context_fingerprint()). Without this, two different
+    conversations both asking a context-dependent follow-up like "explain
+    more" or "summarize that" hashed to the IDENTICAL cache key and one
+    would silently get back the other's answer -- a real cross-conversation
+    correctness bug, not just a cache-efficiency detail. A brand-new
+    conversation's first message still has context="" like before, so
+    genuinely repeated fresh questions (e.g. two separate chats both
+    opening with "what is the latest Rust version") still hit the cache.
+    """
     norm = re.sub(r"[^\w\s]", " ", query.lower())
     norm = re.sub(r"\s+", " ", norm).strip()
-    raw = f"{norm}|{mode}"
+    raw = f"{norm}|{mode}|{context}"
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
 
@@ -53,9 +64,9 @@ def init_cache() -> None:
     conn.close()
 
 
-def get_cached(query: str, mode: str) -> dict | None:
+def get_cached(query: str, mode: str, context: str = "") -> dict | None:
     """Return cached entry if fresh, else None."""
-    key = _key(query, mode)
+    key = _key(query, mode, context)
     now = datetime.now(timezone.utc).isoformat()
     conn = _conn()
     row = conn.execute(
@@ -85,8 +96,9 @@ def set_cached(
     web_sources: list,
     prompt_tokens: int,
     completion_tokens: int,
+    context: str = "",
 ) -> None:
-    key = _key(query, mode)
+    key = _key(query, mode, context)
     now = datetime.now(timezone.utc)
     ttl = WEB_CACHE_TTL_HOURS if intent == "web" else RAG_CACHE_TTL_HOURS
     expires = (now + timedelta(hours=ttl)).isoformat()
