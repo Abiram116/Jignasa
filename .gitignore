@@ -112,3 +112,4 @@ skills-lock.json
 
 # --- Stray dev artifacts (not source, not meant to be committed) ---
 all_changes.patch
+jignasa-fix-report.md
