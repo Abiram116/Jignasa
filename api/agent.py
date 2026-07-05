@@ -147,8 +147,7 @@ def run_agent_loop(
     """
     import time
 
-    from ollama import chat as _ollama_chat
-
+    from api import ollama_discovery
     from api.rag import search_with_transform
     from api.websearch import web_search as _web_search
 
@@ -244,7 +243,7 @@ def run_agent_loop(
     for _ in range(MAX_REACT_ITERATIONS):
         step_start = time.monotonic()
         try:
-            resp = _ollama_chat(
+            resp = ollama_discovery.client().chat(
                 model=OLLAMA_MODEL,
                 messages=decision_messages,
                 tools=tools,

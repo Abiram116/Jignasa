@@ -16,8 +16,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from ollama import chat as ollama_chat
-
+from api import ollama_discovery
 from api.config import OLLAMA_MODEL
 
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
@@ -59,7 +58,7 @@ def _stream_ollama(messages: list[dict], temperature: float, num_predict: int, m
     # Their tool-selection reliability was specifically calibrated against
     # that one model (scripts/eval_tool_selection.py) and isn't validated
     # for whatever else a user might have pulled locally.
-    for chunk in ollama_chat(
+    for chunk in ollama_discovery.client().chat(
         model=model or OLLAMA_MODEL,
         messages=messages,
         stream=True,

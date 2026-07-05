@@ -113,10 +113,12 @@ def startup() -> None:
     init_cache()
     memory.init_memory()
     audit.init_audit()
-    # Must run before any request handler makes its first Ollama call --
-    # sets OLLAMA_HOST in-process for the WSL-Ollama-on-Windows case, which
-    # every ollama.chat()/ollama.list() call in this codebase already reads
-    # natively with zero further code changes.
+    # Resolves which host to actually talk to (WSL-Ollama-on-Windows
+    # included). NOT just an env var set-and-forget: every ollama.chat()/
+    # ollama.list() call in this codebase goes through
+    # ollama_discovery.client(), which is explicitly rebuilt whenever this
+    # resolves a different host -- see that module's docstring for why a
+    # bare os.environ["OLLAMA_HOST"] alone doesn't work here.
     ollama_discovery.detect_ollama_host()
 
 
@@ -141,8 +143,7 @@ def get_ollama_models() -> list[dict]:
     frontend can degrade gracefully instead of showing a broken dropdown.
     """
     try:
-        from ollama import list as ollama_list
-        resp = ollama_list()
+        resp = ollama_discovery.client().list()
         return [{"name": m.model, "size_bytes": m.size} for m in resp.models]
     except Exception:
         return []

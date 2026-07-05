@@ -196,8 +196,12 @@ function RagSources({ sources, defaultOpen = false }: { sources: Source[]; defau
         <span className={`chevron ${open ? 'up' : ''}`}><Ic.ChevDown /></span>
       </button>
       <div className={`sources-body ${open ? 'expanded' : 'collapsed'}`}>
-        {sources.map((s) => (
-          <div key={s.rank} className="source-card">
+        {sources.map((s, i) => (
+          // Not just s.rank: hybrid mode or multiple tool iterations with
+          // different queries can retrieve overlapping chunks that end up
+          // with the same rank in this list -- a duplicate key means React
+          // silently drops or mis-renders one of the cards.
+          <div key={`${s.source}-${s.page_number}-${i}`} className="source-card">
             <div className="source-card-header">
               <span className="source-rank">#{s.rank}</span>
               <span className="source-file">{s.source ?? 'unknown'}</span>

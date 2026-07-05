@@ -192,10 +192,10 @@ def extract_memory(user_message: str, assistant_answer: str, session_id: str | N
     if name_fact and save_memory(name_fact, source_session_id=session_id):
         saved.append(name_fact)
 
-    from ollama import chat as _ollama_chat
+    from api import ollama_discovery
 
     try:
-        resp = _ollama_chat(
+        resp = ollama_discovery.client().chat(
             model=OLLAMA_MODEL,
             messages=[{
                 "role": "user",
