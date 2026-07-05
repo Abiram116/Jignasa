@@ -3,8 +3,39 @@ name: Deploy GitHub Pages showcase
 on:
   push:
     branches: [master]
+    # Deliberately NOT "web/**" -- that also matches the actual app's own
+    # source (ChatInterface.tsx, api.ts, etc.), which changes far more
+    # often than the showcase page and has nothing to do with it. This
+    # list is every file HomePage.tsx actually pulls in (traced via its
+    # import graph), so an app-only bug fix stops re-triggering (and
+    # re-cancelling, given cancel-in-progress below) a showcase deploy
+    # that has nothing to show. If you touch something showcase-relevant
+    # that isn't in this list, use the "Run workflow" button (workflow_dispatch)
+    # instead of widening this back to a broad glob.
     paths:
-      - "web/**"
+      - "web/src/App.tsx"
+      - "web/src/main.tsx"
+      - "web/src/HomePage.tsx"
+      - "web/src/StaticShowcaseSection.tsx"
+      - "web/src/EvalResultsSection.tsx"
+      - "web/src/PreLoader.tsx"
+      - "web/src/ShinyText.tsx"
+      - "web/src/ShinyText.css"
+      - "web/src/ScrollFloat.tsx"
+      - "web/src/ScrollFloat.css"
+      - "web/src/MagicBentoGlow.tsx"
+      - "web/src/SmoothScroll.tsx"
+      - "web/src/ScrollReveal.tsx"
+      - "web/src/TextPressure.tsx"
+      - "web/src/StickyPipeline.tsx"
+      - "web/src/CountUp.tsx"
+      - "web/src/deviceTier.ts"
+      - "web/src/index.css"
+      - "web/index.html"
+      - "web/vite.config.ts"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "web/public/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
