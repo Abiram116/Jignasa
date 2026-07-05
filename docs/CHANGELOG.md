@@ -1,0 +1,106 @@
+# Changelog
+
+Dated entries for real fixes made after initial development — what was
+noticed, what was actually wrong, and what changed. Kept separate from the
+root [README.md](../README.md) so a first-time visitor sees the project
+first, not a running log of bug fixes.
+
+### 2026-07-05 — Ollama fix completed, docs corrected, repo cleanup
+
+- **Two Ollama call sites (`api/query_transform.py`) were still using the
+  old default client**, missed in the previous fix. RAG query rewriting
+  would silently stop working (falling back to the raw question, no error
+  shown) in exactly the WSL-gateway case the fix was built for. Now
+  consistent everywhere — confirmed with `grep -rn "from ollama import"
+  api/` that only `ollama_discovery.py` itself imports from the package
+  directly.
+- **Fixed a duplicate React key on document source cards** — `key={s.rank}`
+  could collide when hybrid mode or multiple search iterations retrieved
+  overlapping chunks, silently dropping or mis-rendering a card. Now a
+  compound key that can't collide.
+- **The GitHub Pages showcase kept redeploying (and occasionally failing)
+  from unrelated app changes** — its trigger matched all of `web/**`,
+  which also contains the real chat app's own source. Scoped to just the
+  files the showcase page's homepage actually imports.
+- **Documentation caught up with the code — several claims were flatly
+  wrong**, not just outdated wording: the architecture docs still said
+  pinning a mode "never forces a tool call" (the opposite of the fix a few
+  days earlier), the security docs described CORS as a fixed origin list
+  (it's been a regex for a while), and the rate-limiter claim didn't
+  mention it was dead code until recently. All corrected, with the Ollama
+  client bug and the prompt-cache leak added as proper case studies in
+  `docs/TECHNICAL.md` — this project's whole premise is admitting real bugs
+  with evidence, not just claiming things work.
+- Removed 3 unused leftover files from the original Vite scaffold template
+  (`react.svg`, `vite.svg`, `hero.png`) that nothing in the app referenced.
+
+### 2026-07-03 — Quit reliability + Ollama auto-detection follow-up
+
+- **Quit Jignasa could falsely report "Couldn't confirm the backend shut
+  down"** even when it actually worked. The post-shutdown check went
+  through Vite's dev proxy, which returns a real (non-throwing) HTTP 502
+  when the backend is dead but Vite is still alive for a moment longer —
+  the old check only trusted a thrown `fetch()` as "it's down" and read
+  that 502 as "still running." Now polls the backend directly, bypassing
+  the proxy, and checks the response status instead of ignoring it.
+- **Ollama host is now auto-detected, WSL included.** At startup,
+  `api/ollama_discovery.py` probes `127.0.0.1:11434`; if that fails and
+  it detects it's running inside WSL2, it automatically tries the Windows
+  host's gateway IP instead — no more manually exporting `OLLAMA_HOST` for
+  that specific setup. An explicit `OLLAMA_HOST` you've already set is
+  always respected, never overridden. `/api/status` now reports
+  reachability, and the sidebar shows a clear "Can't reach Ollama at
+  {host}" message instead of a generic error surfacing only after you send
+  a message.
+
+### 2026-07-03 — Reliability & correctness pass
+
+Real usage turned up a batch of genuine bugs, not cosmetic nitpicks. Fixed:
+
+- **Knowledge/Web/Hybrid modes could silently answer as plain chat with no
+  sources.** Pinning a mode only *permitted* its tool — the model could
+  still decide not to call it. Pinned modes now call their tool
+  deterministically every turn; only Auto mode still adaptively decides
+  (`api/agent.py`'s `force_tools`).
+- **Cache key collision across unrelated conversations.** The prompt cache
+  was keyed on message text + mode only, globally — a context-dependent
+  follow-up like "explain more" in one conversation could return a
+  different conversation's cached answer. Now folds in a short fingerprint
+  of recent history, and zero-source answers are never cached at all
+  (`api/cache.py`).
+- **"Quit Jignasa" wasn't fully reliable.** Added a Windows fallback
+  (`os.killpg` doesn't exist there), a SIGKILL escalation if graceful
+  shutdown hangs on an open connection, and the frontend now actually
+  verifies the backend went down instead of assuming success.
+- **First launch could show a blank white screen.** `run_all.sh`/`run_all.bat`
+  now install missing frontend dependencies automatically and wait for the
+  backend to actually be ready before opening the browser, instead of a
+  blind timer. Added a static HTML loading splash as a last-resort fallback.
+- **Installed PWA required deleting and reinstalling to get updates.** Added
+  `skipWaiting`/`clientsClaim` so a new version now takes over automatically.
+- **The rate limiter was defined but never actually applied** to any route
+  — now enforced on chat and document upload (429 after 30 requests/minute
+  per IP).
+- **Wrong model name shown in the UI.** The chat page showed a hardcoded
+  backend value that didn't reflect BYOK or an alternate local model
+  selection; now derived from your actual active setting.
+- **Sidebar had no closing animation.** A CSS Grid track change
+  (`264px 1fr → 1fr`) isn't something a browser can animate between, so
+  the exit animation played invisibly. Fixed by keeping the grid shape
+  constant and animating the sidebar's own width instead.
+- **Deleting a conversation had no confirmation** — one misclick, gone.
+  Now uses the same click-to-arm confirm pattern as Quit/Clear-memories.
+- **No guidance for WSL users whose Ollama runs on the Windows side** — a
+  real networking boundary (WSL2's separate network namespace), not a bug,
+  but it produced a confusing generic error with no explanation. Errors
+  now specifically say "Can't reach Ollama" with a pointer to the fix, and
+  the README documents both options (run Ollama inside WSL, or set
+  `OLLAMA_HOST`, which needed zero code changes since the `ollama` client
+  already reads it natively).
+
+Known, deliberately not changed: Auto mode's decision prompt still
+proactively searches documents for concept questions even when the
+knowledge base might not cover them — this is a calibrated, eval-tested
+behavior (`scripts/eval_tool_selection.py`), and the "worse answers" reports
+that prompted this pass are more plausibly explained by the cache bug above.
+Not touching it without re-running the eval to confirm a change actually helps.

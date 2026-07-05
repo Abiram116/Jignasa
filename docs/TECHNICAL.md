@@ -72,12 +72,26 @@ obvious small talk instantly, with zero LLM round-trip, regardless of which
 mode is pinned. Everything else enters `run_agent_loop()` (`api/agent.py`),
 which is given a *tool menu* scoped by the pinned mode —
 `{"agent" (auto): both, "hybrid": both, "docs": rag_search only, "web":
-web_search only}` — and decides for itself, every turn, whether to call
-either, both, or neither. Pinning a mode never forces a tool call; it only
-changes what's on the menu. This replaced an earlier design where `docs`/
-`web`/`hybrid` were four separate fixed branches that always ran their
-associated retrieval step unconditionally — asking "what's 2+2" while
-Knowledge-pinned used to run a full FAISS search for no reason.
+web_search only}`.
+
+**Auto mode** decides for itself, every turn, whether to call either tool,
+both, or neither — this is the original adaptive design, unchanged: asking
+"what's 2+2" in Auto never triggers a pointless document search.
+
+**Pinned modes (Knowledge/Web/Hybrid) force their tool(s) every turn**
+(`force_tools` param on `run_agent_loop`), rather than merely permitting
+them. **Found and fixed:** the first version only scoped the *menu* for
+pinned modes too, still leaving the actual call up to the model's
+discretion — which meant Knowledge mode could intermittently answer as
+plain chat with zero sources, because the model sometimes just decided not
+to bother calling `rag_search`, silently defeating the entire point of
+pinning a mode. A user pinning "Knowledge" is stating a requirement
+("search my documents"), not a suggestion the model is free to skip.
+Forcing it fixed that; Auto mode's adaptive behavior is untouched by this
+change. If a pinned document search comes back empty, the existing "honest
+about uncertainty" system prompts (below) still produce a genuine
+"not in your documents" answer rather than fabricating one — this fix
+made retrieval *run*, it didn't change how a miss is handled afterward.
 
 The persisted mode / UI badge is always derived from the *outcome* of a
 turn (which tools it actually ended up using — `rag_attempted`/
@@ -153,6 +167,12 @@ a structured "why" at zero extra latency — no separate thinking-mode call
 needed, and it's exactly the input Stage 2.5's planned audit log will
 consume (see `docs/AGENT_ROADMAP.md`). The loop terminates on no tool call,
 a repeated `(tool, query)` pair, or a hard iteration cap.
+
+The decision prompt below governs Auto mode's tool choice entirely, and
+governs any *additional* optional calls a pinned mode's model makes beyond
+its one guaranteed call — pinned modes run their required tool(s) first,
+unconditionally, before this decision loop ever gets a turn (see "Mode
+routing" above).
 
 **The decision prompt went through a real whiplash cycle worth documenting
 plainly**: it started simple ("call a tool if you need more information"),
@@ -423,6 +443,76 @@ times, the fix came from measuring the actual search results and actual
 model output side by side, not from re-reading the prompt and guessing
 what sounded reasonable.
 
+## Case study 3: the prompt cache leaking answers across unrelated conversations
+
+`api/cache.py` caches full responses to skip a repeat LLM call — the key
+was `sha256(normalize(query) + mode)`, global across every conversation.
+That's correct for a genuinely repeated, standalone question ("what's the
+latest Rust version" asked in two different chats should hit the same
+cache entry). It's wrong for a *context-dependent* follow-up: "explain
+more" or "summarize that" hashes identically regardless of which
+conversation asked it or what "that" refers to, so two unrelated
+conversations both ending a message with "explain more" would get back
+whichever one happened to answer first — a real cross-conversation
+correctness bug, not just a caching inefficiency.
+
+**Fix**: fold a short fingerprint of recent history into the key —
+the last 2 messages of `prior_history`, joined into `cache_context` in
+`api/main.py` and passed to both `get_cached()`/`set_cached()`. A brand-new
+conversation's first message still has an empty fingerprint, so genuinely
+repeated fresh questions across separate chats still hit the cache exactly
+as before; only context-dependent follow-ups now get a different key per
+conversation. Also stopped caching zero-source answers ("I don't have
+enough information") at all — caching a non-answer risked serving it to a
+later, differently-worded-but-similarly-hashed question that might
+actually have had a real answer available.
+
+## Case study 4: a fix that looked correct, verified against library source, and wasn't
+
+Built `api/ollama_discovery.py` to solve a real problem: WSL2 users running
+Ollama on the Windows host can't reach it at `127.0.0.1:11434` from inside
+WSL, since WSL2 has its own network namespace. The fix probed for the
+Windows host's gateway IP and, on success, set `os.environ["OLLAMA_HOST"]`
+so every `ollama.chat()`/`ollama.list()` call downstream would pick it up.
+Code review looked right. Startup logs looked right. `/api/status` correctly
+reported the new host as reachable. It didn't work.
+
+**The actual bug required reading the `ollama` package's source, not just
+this codebase.** `ollama/__init__.py` constructs a module-level
+`_client = Client()` the moment the package is first imported, and
+`Client.__init__` reads `os.getenv('OLLAMA_HOST')` exactly once, baking the
+resolved host into that instance permanently
+(`ollama/_client.py`: `base_url=_parse_host(host or os.getenv('OLLAMA_HOST'))`).
+`api/llm.py`'s `from ollama import chat` captures a bound method on that
+same frozen instance — and that import happens when `api.main` loads,
+which is *before* the FastAPI startup event (where the host detection ran)
+ever fires. Setting the env var afterward changed nothing: `chat`/`list`
+were already permanently bound to whatever host was resolved at import
+time, almost always the unreachable default. `/api/status` wasn't lying
+exactly — its probe was a fresh, independent HTTP request that correctly
+found the gateway reachable — it just had no relationship to what the
+frozen client would actually use, which made the bug worse than a loud
+failure: everything *looked* fixed while every real chat call kept
+silently eating a connection timeout and falling back to whatever
+degrades gracefully (the agent loop skips tools, memory extraction no-ops).
+
+**The fix**: stop treating the env var as sufficient. `ollama_discovery.py`
+now owns a lazily-constructed `Client`, explicitly rebuilt whenever host
+detection resolves a (different) host, and every call site
+(`api/llm.py`, `api/agent.py`, `api/memory.py`, `api/query_transform.py`,
+`api/main.py`) goes through `ollama_discovery.client()` instead of the
+package's top-level `chat`/`list`. Two of those five call sites were missed
+in the first pass of this fix — both wrapped in `try/except` for unrelated
+reasons, so the miss was silent rather than a crash, which is exactly why
+`grep -rn "from ollama import" api/` is now a standing check documented in
+that module's own docstring, not just a one-time cleanup.
+
+**Verified, not just re-reviewed**: a standalone script pointed the client
+at a deliberately wrong host (confirmed it failed with `ConnectionError`),
+then triggered re-detection with the correct host and confirmed a real
+`.list()` call succeeded against it — proving the client actually rebinds
+dynamically, which is the exact mechanism the original bug broke.
+
 ## Evaluation
 
 Three distinct benchmarks exist, covering different failure modes:
@@ -474,9 +564,17 @@ completely broken.
   attempts (`"ignore previous instructions"`, `"act as if you"`, etc.) —
   this is a basic keyword filter, not a robust defense; treat it as a
   speed bump, not a security boundary.
-- Per-IP token-bucket rate limiting (30 req/60s) on the chat endpoint and
-  the evaluation endpoints (the other expensive path — runs the full RAG
-  pipeline over a question set).
+- Per-IP token-bucket rate limiting (30 req/60s) on the chat and document
+  upload endpoints. **Found and fixed**: `_RateLimiter` was fully
+  implemented in `api/security.py` but never actually imported or called
+  anywhere in `api/main.py` — a real gap between what was claimed and what
+  ran, caught by an independent code audit, not by testing (nothing user-
+  visible breaks when a rate limiter is silently absent). Now enforced via
+  `_limiter.is_allowed(get_client_ip(request))`, returning HTTP 429 —
+  verified live by firing 32 rapid requests and confirming the 429s
+  actually start appearing. The evaluation endpoints are not currently
+  covered by this; worth adding if this project ever runs somewhere
+  reachable by more than one person.
 - Standard security headers (CSP, HSTS, X-Frame-Options, etc.) via
   `SecurityHeadersMiddleware`.
 - BYOK (`api/llm.py`): a user-supplied OpenAI/Anthropic/Gemini key is used
@@ -525,8 +623,16 @@ both fixed in the same pass rather than just documented:
   Linux/macOS so the bind-mounted `knowledge-base/`/`rag_index/` volumes
   stay writable without extra config) — see `docs/DEPLOYMENT.md` for the
   one-line `chown` fix if your host UID differs.
-- **Confirmed safe, no change needed:** CORS is restricted to the dev
-  origins only with no wildcard; all SQL in `api/db.py`/`api/cache.py` uses
+- **Confirmed safe, no change needed:** CORS uses `allow_origin_regex`
+  matching only `localhost`/`127.0.0.1` at any port (`^https?://(localhost|
+  127\.0\.0\.1)(:\d+)?$` in `api/main.py`) — a regex, not a hardcoded port
+  list, specifically because Vite's dev server silently moves to the next
+  free port (5174, 5175...) when 5173 is taken, and a fixed-port allowlist
+  would have started rejecting the frontend the moment that happened. Still
+  loopback-only, no wildcard host, verified with a live request from a
+  disallowed origin (`http://evil.com`) confirmed rejected with "Disallowed
+  CORS origin" while any localhost port is accepted; all SQL in
+  `api/db.py`/`api/cache.py` uses
   parameterized queries (the one f-string is a hardcoded column name in a
   schema migration, not user input); session IDs are validated against a
   fixed `session_YYYYMMDD_HHMMSS_NNNNNN` regex before any DB lookup; no

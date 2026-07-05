@@ -7,8 +7,7 @@ Techniques:
 """
 from __future__ import annotations
 
-from ollama import chat as ollama_chat
-
+from api import ollama_discovery
 from api.config import OLLAMA_MODEL
 
 
@@ -27,7 +26,7 @@ def rewrite_query(question: str) -> str:
         f"Question: {question}\n\nRewritten query:"
     )
     try:
-        response = ollama_chat(
+        response = ollama_discovery.client().chat(
             model=OLLAMA_MODEL,
             messages=[{"role": "user", "content": prompt}],
             stream=False,
@@ -54,7 +53,7 @@ def generate_hypothetical_document(question: str) -> str:
         f"Question: {question}\n\nPassage:"
     )
     try:
-        response = ollama_chat(
+        response = ollama_discovery.client().chat(
             model=OLLAMA_MODEL,
             messages=[{"role": "user", "content": prompt}],
             stream=False,

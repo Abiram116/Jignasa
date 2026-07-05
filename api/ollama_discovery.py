@@ -19,11 +19,20 @@ client) -- actively misleading, not just inert.
 
 Fix: don't rely on the env var being re-read. This module owns an explicit,
 lazily-constructed Client pointed at whatever host was actually resolved,
-and every call site (api/llm.py, api/agent.py, api/memory.py, api/main.py's
-get_ollama_models()) uses ollama_discovery.client() instead of the
-top-level ollama.chat/ollama.list. A user-set OLLAMA_HOST env var is still
-read once at detection time and always wins -- it's just no longer the
-only mechanism relied on to actually reach the resolved host.
+and every call site (api/llm.py, api/agent.py, api/memory.py,
+api/query_transform.py, api/main.py's get_ollama_models()) uses
+ollama_discovery.client() instead of the top-level ollama.chat/ollama.list.
+A user-set OLLAMA_HOST env var is still read once at detection time and
+always wins -- it's just no longer the only mechanism relied on to
+actually reach the resolved host.
+
+query_transform.py was missed in the first pass of this fix (it has two
+call sites, rewrite_query() and generate_hypothetical_document(), both
+wrapped in try/except so the miss was silent -- RAG search kept working,
+just paying a ~1s timeout and silently losing query rewriting whenever the
+default host was wrong). If you add a new Ollama call site anywhere, run
+`grep -rn "from ollama import" api/` -- the only permitted hits are this
+file (importing Client) and this docstring's own prose mentioning it.
 """
 from __future__ import annotations
 

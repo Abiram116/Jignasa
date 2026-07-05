@@ -25,7 +25,7 @@ Jignasa is a complete RAG system built from first principles: a structure-aware 
 
 ## What it does
 
-Ask it anything. Jignasa runs a small hand-written ReAct (Reason + Act) loop — no LangChain — that decides for itself, every turn, whether it needs to search your documents, search the web, both, or just answer directly. Pinning a mode doesn't force a search; it only changes which tools are on the table. "What's 2+2" in Knowledge mode gets a direct answer, not a pointless document search. Every answer streams live with sources, and a live "thinking" trace shows exactly which tool it called and why before the answer even starts.
+Ask it anything. Jignasa runs a small hand-written ReAct (Reason + Act) loop — no LangChain. In **Auto** mode, it decides for itself, every turn, whether it needs to search your documents, search the web, both, or just answer directly — "what's 2+2" gets a direct answer, not a pointless document search. If you pin a specific mode instead (Knowledge/Web/Hybrid), that's you telling it exactly what to use, so it uses it every turn, no second-guessing — that's the actual point of pinning a mode. Every answer streams live with sources, and a live "thinking" trace shows exactly which tool it called and why before the answer even starts.
 
 It also remembers durable things you tell it — your name, a stated preference — across every future conversation, the same way ChatGPT's memory works: sparingly, only for identity-level facts, never a running summary of what you asked about. You can see and delete everything it remembers from the sidebar.
 
@@ -33,12 +33,12 @@ Everything runs on a local model via [Ollama](https://ollama.com) — there's no
 
 ### Modes
 
-The mode selector above the input box has four buttons: **Auto**, **Knowledge**, **Web**, and **Hybrid**. All four run through the same adaptive loop — the difference is only which tools are available to it:
+The mode selector above the input box has four buttons: **Auto**, **Knowledge**, **Web**, and **Hybrid**. All four run through the same loop, but only Auto lets it decide for itself which tools to use:
 
-- **Auto** (default) — a cheap heuristic catches obvious small talk instantly; everything else goes to the loop with both tools available
-- **Knowledge** — only document search is available; a genuine miss gets an honest "not in your documents" answer, not a fabricated one
-- **Web** — only live DuckDuckGo search is available, cited inline, no API key needed
-- **Hybrid** — both tools available; the loop decides whether it needs one, both, or (for trivial questions) neither
+- **Auto** (default) — a cheap heuristic catches obvious small talk instantly; everything else goes to the loop, which decides on its own whether to search documents, search the web, both, or neither
+- **Knowledge** — always searches your documents that turn; a genuine miss gets an honest "not in your documents" answer, not a fabricated one
+- **Web** — always searches the live web that turn, cited inline, no API key needed
+- **Hybrid** — always searches both that turn, then combines whatever it finds
 
 The badge under each answer always reflects what actually happened that turn (PDF RAG / Web / Hybrid / Chat), never which button you pressed.
 
@@ -58,7 +58,7 @@ The badge under each answer always reflects what actually happened that turn (PD
 Most "chat with your docs" projects are a thin wrapper around a hosted API. Jignasa builds every layer itself:
 
 - **A real RAG pipeline** — PDF parsing, structure-aware chunking that keeps page and section context, vector search, and query rewriting to actually find the right passage, not just a keyword match
-- **Genuinely agentic, not a routing table** — a hand-written ReAct loop decides per-turn whether to call a tool at all, the same mechanism Claude's own tool use runs on. No LangChain, no framework magic — see [`docs/AGENT_ROADMAP.md`](docs/AGENT_ROADMAP.md) for how this was built and [`docs/TECHNICAL.md`](docs/TECHNICAL.md) for two real "found it, measured it, fixed it" case studies from tuning it
+- **Genuinely agentic, not a routing table** — a hand-written ReAct loop decides per-turn whether to call a tool at all, the same mechanism Claude's own tool use runs on. No LangChain, no framework magic — see [`docs/AGENT_ROADMAP.md`](docs/AGENT_ROADMAP.md) for how this was built and [`docs/TECHNICAL.md`](docs/TECHNICAL.md) for real "found it, measured it, fixed it" case studies from tuning it
 - **Honest about uncertainty** — the model is explicitly prompted to say "I don't know" rather than make something up, and citations are verified before being shown
 - **Measured, not just claimed** — retrieval quality and answer quality are both benchmarked against real test questions, and the results are shown live on the homepage, not just asserted in this README
 - **A genuinely designed interface** — not a default template: custom type, a real motion/scroll system, and a UI built to feel as considered as the backend (see [`web/README.md`](web/README.md))
@@ -235,79 +235,6 @@ without touching the terminal again. See
 
 **Prefer Docker?** One `docker compose up` runs the whole stack — backend, frontend, and Ollama — with no Python/Node toolchain needed on your machine. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-## Changelog
-
-### 2026-07-03 — Quit reliability + Ollama auto-detection follow-up
-
-- **Quit Jignasa could falsely report "Couldn't confirm the backend shut
-  down"** even when it actually worked. The post-shutdown check went
-  through Vite's dev proxy, which returns a real (non-throwing) HTTP 502
-  when the backend is dead but Vite is still alive for a moment longer —
-  the old check only trusted a thrown `fetch()` as "it's down" and read
-  that 502 as "still running." Now polls the backend directly, bypassing
-  the proxy, and checks the response status instead of ignoring it.
-- **Ollama host is now auto-detected, WSL included.** At startup,
-  `api/ollama_discovery.py` probes `127.0.0.1:11434`; if that fails and
-  it detects it's running inside WSL2, it automatically tries the Windows
-  host's gateway IP instead — no more manually exporting `OLLAMA_HOST` for
-  that specific setup. An explicit `OLLAMA_HOST` you've already set is
-  always respected, never overridden. `/api/status` now reports
-  reachability, and the sidebar shows a clear "Can't reach Ollama at
-  {host}" message instead of a generic error surfacing only after you send
-  a message.
-
-### 2026-07-03 — Reliability & correctness pass
-
-Real usage turned up a batch of genuine bugs, not cosmetic nitpicks. Fixed:
-
-- **Knowledge/Web/Hybrid modes could silently answer as plain chat with no
-  sources.** Pinning a mode only *permitted* its tool — the model could
-  still decide not to call it. Pinned modes now call their tool
-  deterministically every turn; only Auto mode still adaptively decides
-  (`api/agent.py`'s `force_tools`).
-- **Cache key collision across unrelated conversations.** The prompt cache
-  was keyed on message text + mode only, globally — a context-dependent
-  follow-up like "explain more" in one conversation could return a
-  different conversation's cached answer. Now folds in a short fingerprint
-  of recent history, and zero-source answers are never cached at all
-  (`api/cache.py`).
-- **"Quit Jignasa" wasn't fully reliable.** Added a Windows fallback
-  (`os.killpg` doesn't exist there), a SIGKILL escalation if graceful
-  shutdown hangs on an open connection, and the frontend now actually
-  verifies the backend went down instead of assuming success.
-- **First launch could show a blank white screen.** `run_all.sh`/`run_all.bat`
-  now install missing frontend dependencies automatically and wait for the
-  backend to actually be ready before opening the browser, instead of a
-  blind timer. Added a static HTML loading splash as a last-resort fallback.
-- **Installed PWA required deleting and reinstalling to get updates.** Added
-  `skipWaiting`/`clientsClaim` so a new version now takes over automatically.
-- **The rate limiter was defined but never actually applied** to any route
-  — now enforced on chat and document upload (429 after 30 requests/minute
-  per IP).
-- **Wrong model name shown in the UI.** The chat page showed a hardcoded
-  backend value that didn't reflect BYOK or an alternate local model
-  selection; now derived from your actual active setting.
-- **Sidebar had no closing animation.** A CSS Grid track change
-  (`264px 1fr → 1fr`) isn't something a browser can animate between, so
-  the exit animation played invisibly. Fixed by keeping the grid shape
-  constant and animating the sidebar's own width instead.
-- **Deleting a conversation had no confirmation** — one misclick, gone.
-  Now uses the same click-to-arm confirm pattern as Quit/Clear-memories.
-- **No guidance for WSL users whose Ollama runs on the Windows side** — a
-  real networking boundary (WSL2's separate network namespace), not a bug,
-  but it produced a confusing generic error with no explanation. Errors
-  now specifically say "Can't reach Ollama" with a pointer to the fix, and
-  the README documents both options (run Ollama inside WSL, or set
-  `OLLAMA_HOST`, which needed zero code changes since the `ollama` client
-  already reads it natively).
-
-Known, deliberately not changed: Auto mode's decision prompt still
-proactively searches documents for concept questions even when the
-knowledge base might not cover them — this is a calibrated, eval-tested
-behavior (`scripts/eval_tool_selection.py`), and the "worse answers" reports
-that prompted this pass are more plausibly explained by the cache bug above.
-Not touching it without re-running the eval to confirm a change actually helps.
-
 ## Project layout
 
 ```
@@ -320,7 +247,7 @@ Jignasa/
 ├── data/            ← Evaluation question sets & saved runs (see data/README.md)
 ├── scripts/         ← Evaluation utilities used by the API (see scripts/README.md)
 ├── archive/         ← Retired code, kept for reference (see archive/README.md)
-├── docs/            ← Technical deep-dive (docs/TECHNICAL.md) and Docker self-host guide (docs/DEPLOYMENT.md)
+├── docs/            ← Technical deep-dive, Docker guide, and dated changelog (docs/CHANGELOG.md)
 └── run_all.sh       ← Start backend + frontend together
 ```
 
@@ -336,4 +263,4 @@ test-before-PR workflow.
 
 ---
 
-*Looking for implementation details — prompt formats, SSE event schema, the motion/scroll system, or a real debugging case study (a grounding-fidelity bug found, root-caused, and fixed with evidence)? See [`docs/TECHNICAL.md`](docs/TECHNICAL.md). Each non-obvious folder also has its own short README.*
+*Looking for implementation details — prompt formats, SSE event schema, the motion/scroll system, or a real debugging case study (a grounding-fidelity bug found, root-caused, and fixed with evidence)? See [`docs/TECHNICAL.md`](docs/TECHNICAL.md). For a dated log of bugs found and fixed after initial development, see [`docs/CHANGELOG.md`](docs/CHANGELOG.md). Each non-obvious folder also has its own short README.*
