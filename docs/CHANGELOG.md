@@ -5,6 +5,51 @@ noticed, what was actually wrong, and what changed. Kept separate from the
 root [README.md](../README.md) so a first-time visitor sees the project
 first, not a running log of bug fixes.
 
+### 2026-07-05 — Auto mode missing obvious searches, homepage stats getting stuck
+
+- **Auto mode sometimes answered from its own memory instead of searching
+  your documents, even for clearly document-related questions.** Noticed
+  when asking "tell about AI engineering concepts" — it answered on its
+  own, but the exact same topic asked as "what is AI engineering?" in
+  Knowledge mode correctly searched. The reason: the instruction telling
+  the model when to search documents only gave it question-shaped examples
+  ("what does X do", "explain how Y works"). "Tell about X" is a command,
+  not a question, so it fell outside what the model recognized as
+  "obviously search this." Fixed by rewording the instruction to explicitly
+  cover commands too, and added the exact failing question as a permanent
+  automated test (`scripts/eval_tool_selection.py`) so this can't quietly
+  break again. Verified live — the same question now correctly searches
+  the knowledge base.
+- **A smaller, related finding while checking this:** first attempt at the
+  wording fix looked like it broke two *other*, previously-working
+  questions. Before assuming that and reverting, re-tested those same two
+  questions against the completely unedited, original wording — and they
+  failed there too. So that wasn't something this fix broke; it's the
+  local model occasionally being unsure on borderline cases regardless of
+  wording, which was already a known, accepted limitation. Worth
+  mentioning because it's exactly the kind of thing that's easy to
+  misdiagnose as "my change caused a regression" without checking.
+- **The homepage's live evaluation numbers could get stuck showing "no
+  results" and never recover without a manual page reload**, reported by
+  someone testing the project on their own laptop. On a slower machine,
+  the backend can take longer to finish starting up than the page's
+  retry window allowed for, and once that window ran out, the page showed
+  the exact same message as "no evaluation has ever been run" — no way to
+  tell the two apart, and no further attempts after that. Fixed three
+  ways: gave the backend more time before giving up, made the two
+  situations show different, honest messages, and — the actual fix for
+  the "stuck forever" part — added a quiet background retry that keeps
+  checking indefinitely, so the section fixes itself the moment the
+  backend catches up, with no reload needed. Verified by deliberately
+  starting the page with the backend off, then turning it on and watching
+  the real numbers appear on their own.
+- Corrected a code comment that claimed the memory feature only works in
+  some chat modes — it doesn't, it works the same everywhere, the comment
+  was just never updated after that changed. Also added one clear, single
+  place in the backend code listing exactly which of these behind-the-
+  scenes features apply to which chat modes, instead of that being spread
+  across the code and easy to lose track of.
+
 ### 2026-07-05 — Ollama fix completed, docs corrected, repo cleanup
 
 - **Two Ollama call sites (`api/query_transform.py`) were still using the

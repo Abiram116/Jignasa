@@ -46,6 +46,13 @@ EVAL_SET: list[dict] = [
     },
     {"query": "What does the document say about quantum computing?", "expect": {"rag_search"}},
     {"query": "Who won the most recent cricket World Cup?", "expect": {"web_search"}},
+    # Imperative phrasing, not a question -- added after a real miss: the
+    # decision prompt's examples were all WH-questions, and "tell about X"
+    # (a command, not a question) fell outside the model's pattern-match
+    # for "this is a concept-question, search the docs" and got answered
+    # from memory instead. See docs/CHANGELOG.md.
+    {"query": "Tell me about AI engineering concepts", "expect": {"rag_search"}},
+    {"query": "Give an overview of how retrieval-augmented generation works", "expect": {"rag_search"}},
 ]
 
 

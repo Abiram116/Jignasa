@@ -411,6 +411,39 @@ def post_chat(session_id: str, body: ChatRequest, request: Request) -> Streaming
     except Exception:
         logger.exception("Audit logging failed for a routing decision")
 
+    # ── Feature × mode scope, all in one place ──────────────────────────
+    # Every cross-cutting feature in this request handler and where it
+    # applies, so this never has to be re-derived by reading scattered code
+    # (or worse, guessed at) again. If you add a new feature that only
+    # applies to some modes, add a line here explaining which and why --
+    # that's the actual ask this section satisfies: one clear, single
+    # source of truth instead of an implicit rule buried in a branch.
+    #
+    #   Feature              | Applies to                    | Why
+    #   ---------------------|--------------------------------|----------------------------------
+    #   Guardrails/injection | ALL modes (runs before routing)| Applies to the raw message before
+    #                        |                                | any mode is even resolved.
+    #   Routing + outcome    | ALL modes                      | Logged both before the mode split
+    #   audit logging        |                                | (line ~406) and after (in the
+    #                        |                                | unified branch below) -- Casual
+    #                        |                                | has no extra tool events to log
+    #                        |                                | since it never calls a tool, not
+    #                        |                                | a gap.
+    #   Tool forcing         | docs/web/hybrid only, NOT agent| See _FORCE_TOOLS below -- Auto
+    #   (force_tools)        | (Auto)                         | keeps its adaptive, eval-tested
+    #                        |                                | behavior untouched.
+    #   Query rewriting      | RAG (rag_search) only, NOT     | Tried for web_search once and
+    #   (query_transform.py) | web_search                     | measurably reverted (see
+    #                        |                                | api/websearch.py's docstring) --
+    #                        |                                | it made results worse for a real
+    #                        |                                | case. Deliberate, not a gap.
+    #   Prompt cache          | Every non-casual mode          | Casual is never cached (depends
+    #                        |                                | on live conversation context).
+    #   Memory extraction    | ALL modes, including Casual    | Runs identically after every
+    #                        |                                | non-cached turn -- see
+    #                        |                                | memory_holder above.
+    #   Rate limiting        | Chat + upload endpoints only   | Not the evaluation endpoints yet
+    #                        |                                | -- see docs/TECHNICAL.md Security.
     _PIN_TOOL_SCOPE = {
         "agent":  (True, True),
         "hybrid": (True, True),
@@ -458,10 +491,12 @@ def post_chat(session_id: str, body: ChatRequest, request: Request) -> Streaming
     # Read-before-answering memory (Stage 1): shared by the casual and agent
     # branches below. Global/cross-session, not scoped to this conversation.
     memory_block = memory.format_memory_block(memory.list_memories())
-    # Populated by event_stream() at the end of casual/agent branches only --
-    # extraction is scoped to the router-driven auto-mode experience, not
-    # explicitly-pinned docs/web/hybrid modes. Read by the background task
-    # constructed at the bottom of this function, after the stream finishes.
+    # Populated by event_stream() at the end of every non-cached turn --
+    # casual AND the unified tool-calling branch (agent/docs/web/hybrid all
+    # go through the same branch since routing was unified), so memory
+    # extraction runs identically regardless of which mode answered. Read by
+    # the background task constructed at the bottom of this function, after
+    # the stream finishes.
     memory_holder: dict = {}
 
     if not prior_history:

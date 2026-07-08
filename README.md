@@ -27,7 +27,7 @@ Jignasa is a complete RAG system built from first principles: a structure-aware 
 
 Ask it anything. Jignasa runs a small hand-written ReAct (Reason + Act) loop — no LangChain. In **Auto** mode, it decides for itself, every turn, whether it needs to search your documents, search the web, both, or just answer directly — "what's 2+2" gets a direct answer, not a pointless document search. If you pin a specific mode instead (Knowledge/Web/Hybrid), that's you telling it exactly what to use, so it uses it every turn, no second-guessing — that's the actual point of pinning a mode. Every answer streams live with sources, and a live "thinking" trace shows exactly which tool it called and why before the answer even starts.
 
-It also remembers durable things you tell it — your name, a stated preference — across every future conversation, the same way ChatGPT's memory works: sparingly, only for identity-level facts, never a running summary of what you asked about. You can see and delete everything it remembers from the sidebar.
+It also remembers durable things you tell it — your name, a stated preference — the same way ChatGPT's memory works: sparingly, only for identity-level facts, never a running summary of what you asked about. Concretely: after each reply, it decides whether anything you said is worth keeping, and if so saves it to a small local SQLite table on your own machine (nothing leaves your computer). Every future conversation — not just the one you said it in — reads that same stored list before answering, so "my name is Abiram" said once is remembered from then on, in any new chat. You can see and delete everything it remembers from the sidebar.
 
 Everything runs on a local model via [Ollama](https://ollama.com) — there's no per-message cost, no rate limit from a provider, and no risk of your documents or conversations ever touching someone else's server.
 
@@ -234,6 +234,19 @@ without touching the terminal again. See
 [`knowledge-base/README.md`](knowledge-base/README.md) for more.
 
 **Prefer Docker?** One `docker compose up` runs the whole stack — backend, frontend, and Ollama — with no Python/Node toolchain needed on your machine. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+**Getting updates.** Jignasa isn't an app that updates itself — it's your
+own local copy of this code, so getting the latest fixes/features is just:
+```bash
+git pull
+uv sync              # picks up any new/changed Python dependencies
+cd web && npm install && cd ..   # same, for frontend dependencies
+```
+Then restart it (`./run_all.sh`). Both `uv sync` and `npm install` are
+safe to run even when nothing changed — they just do nothing extra in
+that case. If you installed it as an app (see above), it'll pick up the
+new frontend automatically the next time you open it; only the backend
+needs the manual pull + restart.
 
 ## Project layout
 

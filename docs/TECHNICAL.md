@@ -200,8 +200,10 @@ limitations" below.
 ### Persistent memory (`api/memory.py`)
 
 A small, global, cross-session store — not scoped per conversation, since
-this is a single-user local app with no user table, just chat threads. Two
-halves:
+this is a single-user local app with no user table, just chat threads.
+Concretely: a `memories` table in the same local SQLite database everything
+else uses (`DB_PATH`, `data/chat_history.sqlite3`) — nothing is sent
+anywhere, and nothing extra to run or configure. Two halves:
 
 - **Read, before answering**: `format_memory_block()` renders stored facts
   into a block appended to every casual/loop system prompt. No embedding
