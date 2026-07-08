@@ -19,9 +19,12 @@ Jignasa is a complete RAG system built from first principles: a structure-aware 
 
 ## Demo
 
-> 🎥 *Demo video coming soon — a full walkthrough of casual chat, document Q&A, live web search, and the hybrid mode will go here.*
+<video src="https://raw.githubusercontent.com/Abiram116/Jignasa/master/demo.mp4" controls muted playsinline width="100%"></video>
 
-<!-- Screenshots coming soon: homepage hero, a RAG-mode chat with sources, the live evaluation results. -->
+A quick screen walkthrough (no audio) — the homepage, starting a new chat,
+asking a question in Knowledge mode with sources, the Settings modal
+(local Ollama model picker + bring-your-own-key option), the token/cost
+calculator, and uploading a new document.
 
 ## What it does
 
