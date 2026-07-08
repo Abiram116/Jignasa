@@ -158,12 +158,17 @@ uv run python3 pipeline/03_build_index.py
 - **Option B — bring your own API key, no local model at all.** Skip
   Ollama entirely. Start the app (Step 5), open **Settings**, and paste in
   an OpenAI, Anthropic, or Gemini API key — your key is only ever used for
-  that one request and is never stored on the server. Note: with this
-  option, casual chat works fully through your chosen cloud model, but
-  document search / live web search and long-term memory currently still
-  need a local Ollama connection for their own internal decision step —
-  without Ollama running at all, those specific features stay off and
-  Jignasa behaves as a plain chat assistant using your API key.
+  that one request and is never stored on the server. Casual chat, and
+  **Knowledge / Web / Hybrid mode**, all work fully with zero Ollama
+  running — pinning a mode forces its search before anything ever needs a
+  local model, and document search itself uses a separate local embedding
+  model, not Ollama. The one thing that does need Ollama: **Auto mode's
+  own judgment call on whether to search at all** — without Ollama
+  reachable, that decision step has nothing to decide with, so Auto quietly
+  falls back to plain chat. If you're going fully keyless-Ollama, pin
+  Knowledge/Web/Hybrid explicitly instead of leaving it on Auto. (Saving
+  *new* long-term memories from a turn also needs Ollama and is silently
+  skipped without it — already-saved memories still load and work fine.)
 
 **Step 5 — run it** (starts backend + frontend together):
 ```bash

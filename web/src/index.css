@@ -1974,6 +1974,39 @@ tr:last-child td { border-bottom: none; }
   border-color: var(--border-2);
 }
 
+.settings-key-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.settings-key-row input {
+  flex: 1;
+  min-width: 0;
+}
+.settings-key-row input.masked {
+  -webkit-text-security: disc;
+}
+.settings-key-toggle {
+  flex-shrink: 0;
+  background: var(--cosmos);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: 0.8rem;
+  padding: 0 0.9rem;
+  cursor: pointer;
+}
+.settings-key-toggle:hover {
+  color: var(--text-1);
+  border-color: var(--border-2);
+}
+
+.settings-saved-banner {
+  margin-top: 0.6rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--sage-400);
+}
+
 .edit-message-textarea {
   width: 100%;
   background: var(--cosmos);

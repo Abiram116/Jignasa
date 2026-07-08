@@ -5,6 +5,59 @@ noticed, what was actually wrong, and what changed. Kept separate from the
 root [README.md](../README.md) so a first-time visitor sees the project
 first, not a running log of bug fixes.
 
+### 2026-07-08 — README overstated what breaks without Ollama on BYOK
+
+- **The README claimed that using your own API key with no Ollama running
+  at all disables document search, web search, and memory together** — that
+  turned out to only be true for one of those three, and only in one mode.
+  Tested directly (not assumed): simulated Ollama being completely
+  unreachable and ran the real agent code against the real document index.
+  - **Knowledge / Web / Hybrid mode kept working perfectly** — 5 real
+    chunks retrieved from the actual knowledge base with zero Ollama
+    involved. Pinning a mode forces its tool call before the code ever
+    tries to reach Ollama, and document search's embeddings come from a
+    separate always-local model (sentence-transformers), not Ollama.
+  - **Auto mode is the one real exception** — deciding *whether* to search
+    is itself something only Ollama can answer, so with Ollama unreachable
+    Auto mode found 0 sources and just answered from the cloud model
+    directly, same as the old README described.
+  - Long-term memory: saving *new* facts from a turn needs Ollama and
+    silently no-ops without it (chat itself is never affected); memories
+    already saved earlier still load and work normally regardless.
+  - README corrected to say this precisely instead of lumping all three
+    features under one blanket "stays off" statement — if you're running
+    fully keyless-Ollama, pin Knowledge/Web/Hybrid instead of leaving it on
+    Auto and search still works.
+
+### 2026-07-08 — Settings modal Save button gave no feedback
+
+- **Clicking "Save" in the Model settings modal closed the popup instantly
+  with zero confirmation, and typing a cloud API key made Chrome pop up its
+  own "Save password?" prompt** — reported after someone tried BYOK for the
+  first time and (reasonably) assumed Save was broken. Two separate causes:
+  - The Save button called `onClose()` in the same instant as saving, so
+    nothing on screen ever showed the click had done anything.
+  - The API key field used `<input type="password">`. Chrome doesn't need a
+    real `<form>` to offer to save a password — it just watches for a
+    filled password field disappearing from the page right after a click,
+    which is exactly what closing the modal did. `autocomplete="off"` does
+    nothing here; Chrome has ignored that attribute for password fields
+    since 2014.
+  - Fixed both: Save now shows a visible "Saved ✓" confirmation with a
+    "Saved to this browser. Closing…" line for about a second before the
+    modal closes, and the API key field is no longer a real password
+    input — it's a normal text field visually masked with CSS
+    (`-webkit-text-security`), with a Show/Hide toggle for checking what
+    you typed. Since Chrome never sees a password field at all, there's
+    nothing for its save-password heuristic to key off. Verified with a
+    headless-browser test: field renders masked by default, Show/Hide
+    toggles it, clicking Save immediately renders the confirmation, and
+    the value lands correctly in the browser's own `localStorage`.
+  - To be clear on where the key goes, since that was also asked: it's
+    saved only in your own browser's `localStorage`, never sent to or
+    stored by the backend server — same as before, just now actually
+    confirmed on screen instead of left to assumption.
+
 ### 2026-07-05 — Auto mode missing obvious searches, homepage stats getting stuck
 
 - **Auto mode sometimes answered from its own memory instead of searching

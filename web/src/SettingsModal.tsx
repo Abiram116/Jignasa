@@ -27,6 +27,14 @@ export function SettingsModal({
   const [apiKey, setApiKey] = useState(settings.apiKey)
   const [model, setModel] = useState(settings.model ?? '')
   const [ollamaModels, setOllamaModels] = useState<{ name: string; size_bytes: number }[] | null>(null)
+  const [showKey, setShowKey] = useState(false)
+
+  // Visible confirmation instead of the modal silently vanishing the instant
+  // Save is clicked -- previously onClose() ran in the same tick as onSave(),
+  // so nothing on screen ever showed the click had done anything.
+  const [justSaved, setJustSaved] = useState(false)
+  const savedTimeoutRef = useRef<number | null>(null)
+  useEffect(() => () => { if (savedTimeoutRef.current) window.clearTimeout(savedTimeoutRef.current) }, [])
 
   useEffect(() => {
     getOllamaModels().then(setOllamaModels).catch(() => setOllamaModels([]))
@@ -37,7 +45,11 @@ export function SettingsModal({
   const handleSave = () => {
     if (keyMissing) return
     onSave({ provider, apiKey: provider === 'ollama' ? '' : apiKey.trim(), model: model.trim() || undefined })
-    onClose()
+    setJustSaved(true)
+    savedTimeoutRef.current = window.setTimeout(() => {
+      setJustSaved(false)
+      onClose()
+    }, 1100)
   }
 
   const active = PROVIDERS.find((p) => p.value === provider)!
@@ -147,13 +159,29 @@ export function SettingsModal({
             <>
               <div className="settings-field">
                 <label>API key</label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={active.placeholder}
-                  autoComplete="off"
-                />
+                <div className="settings-key-row">
+                  <input
+                    type="text"
+                    className={showKey ? '' : 'masked'}
+                    name="jignasa-llm-key"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={active.placeholder}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                  />
+                  <button
+                    type="button"
+                    className="settings-key-toggle"
+                    onClick={() => setShowKey((s) => !s)}
+                  >
+                    {showKey ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
               <div className="settings-field">
                 <label>Model (optional override)</label>
@@ -176,10 +204,15 @@ export function SettingsModal({
             className="btn-cta-primary"
             style={{ marginTop: '1rem', width: '100%' }}
             onClick={handleSave}
-            disabled={keyMissing}
+            disabled={keyMissing || justSaved}
           >
-            Save
+            {justSaved ? 'Saved ✓' : 'Save'}
           </button>
+          {justSaved && (
+            <p className="settings-saved-banner">
+              Saved to this browser. Closing…
+            </p>
+          )}
 
           <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-2)' }}>
             <p className="cost-note" style={{ marginBottom: '0.5rem' }}>
